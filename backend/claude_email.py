@@ -42,7 +42,7 @@ def _parse_template(raw: str) -> tuple[str, str]:
     return subject, "\n".join(body_lines).strip()
 
 
-def _substitute(text: str, contact: Contact, industry: str) -> str:
+def _substitute(text: str, contact: Contact, industry: str, sender_name: str = "") -> str:
     return (
         text
         .replace("{first_name}", contact.first_name)
@@ -50,6 +50,7 @@ def _substitute(text: str, contact: Contact, industry: str) -> str:
         .replace("{company}", contact.company)
         .replace("{industry}", industry)
         .replace("{title}", contact.title)
+        .replace("{sender_name}", sender_name)
     )
 
 
@@ -72,9 +73,12 @@ async def draft_company_email(company: str, industry: str, target_title: str) ->
 
     if has_context_marker:
         subj_tmpl, body_tmpl = _parse_template(template_raw)
-        user_prompt = f"""Write a 2–3 sentence company-specific paragraph for the [COMPANY_CONTEXT] section of a cold outreach email targeting {company} in the {industry} industry. The paragraph should:
-- Reference something specific and credible about {company}'s work in {industry}
-- Connect it naturally to what CMG Strategy Consulting (a UC Berkeley student club) can offer: market research, go-to-market strategy, or competitive analysis
+        user_prompt = f"""Write a 2–3 sentence company-specific paragraph for a cold outreach email from CMG Strategy Consulting (a UC Berkeley student consulting club) to {company} in the {industry} industry. The paragraph should:
+- Acknowledge something specific and credible about {company}'s position or work in {industry}
+- Frame CMG's value through a Gen Z lens — e.g. how UC Berkeley students uniquely understand the next generation of consumers, employees, or users
+- Connect naturally to what CMG can offer: market research, go-to-market strategy, competitive analysis, or customer insights
+
+Tone: warm, specific, not generic. Written as if a sharp UC Berkeley student wrote it — not a corporate marketing team.
 
 Return ONLY a JSON object:
 {{
@@ -126,11 +130,11 @@ Return ONLY:
         return {"subject": parsed["subject"], "body": parsed["body"]}
 
 
-def apply_template(subject_tmpl: str, body_tmpl: str, contact: Contact, industry: str) -> dict:
+def apply_template(subject_tmpl: str, body_tmpl: str, contact: Contact, industry: str, sender_name: str = "") -> dict:
     """Substitute per-contact placeholders into a company-level draft template."""
     return {
-        "subject": _substitute(subject_tmpl, contact, industry),
-        "body": _substitute(body_tmpl, contact, industry),
+        "subject": _substitute(subject_tmpl, contact, industry, sender_name),
+        "body": _substitute(body_tmpl, contact, industry, sender_name),
     }
 
 

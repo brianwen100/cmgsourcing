@@ -1,36 +1,36 @@
 # CMG Outreach Email Template
 # ─────────────────────────────────────────────────────────────────────────────
 # Edit this file to customise your outreach emails.
-# The backend reads this as the BASE structure before calling Claude for
-# company-specific content. Claude is invoked ONCE per company to fill in the
-# [COMPANY_CONTEXT] section below; all other placeholders are substituted
-# per-contact at send time.
 #
-# Supported per-contact placeholders:
+# Supported placeholders:
 #   {first_name}   — contact's first name
-#   {last_name}    — contact's last name
-#   {title}        — contact's job title
 #   {company}      — company name
 #   {industry}     — industry (from search form)
+#   {title}        — contact's job title
 #
-# Lines starting with # are comments and are ignored by the backend.
+# [COMPANY_CONTEXT] is replaced by a Claude-generated paragraph specific to
+# the target company. Remove it and write your own if you prefer no AI.
+#
+# Lines starting with # are ignored by the backend.
 # ─────────────────────────────────────────────────────────────────────────────
 
-SUBJECT: Partnership Opportunity for {company} — CMG Strategy Consulting
+SUBJECT: CMG Strategy Consulting x {company} — Fall 2026 Partnership
 
 BODY:
 Hi {first_name},
 
+I hope you're doing well!
+
+My name is Brian, and I'm reaching out on behalf of CMG Strategy Consulting, a student-run organization at UC Berkeley that provides students with hands-on experience in consulting through real-world client projects.
+
+I'm currently an Account Manager at CMG and wanted to see if your team at {company} might be interested in partnering with us for our Fall 2026 cycle (September–December).
+
 [COMPANY_CONTEXT]
 
-My name is [Your Name] and I represent CMG Strategy Consulting, a UC Berkeley
-student consulting club. We partner with companies like {company} to deliver
-focused strategy projects — market research, go-to-market planning, and
-competitive analysis — at no cost to you.
+Our members have received 30+ offers from top consulting firms, including McKinsey, Bain, BCG, Accenture, and EY-Parthenon. In addition to fostering a strong consulting community on campus, we also deliver value through our client engagements — past partners include Meta, Spotify, Amazon, and Google.
 
-Would you be open to a quick 20-minute intro call to explore how we might
-support your team?
+If this sounds interesting, I'd love to schedule a quick call to discuss potential collaboration and next steps. Feel free to look through our work samples and website below — and if there's anyone on your team who might be the right point of contact, please don't hesitate to forward this note!
 
 Best,
-[Your Name]
+{sender_name}
 CMG Strategy Consulting | UC Berkeley

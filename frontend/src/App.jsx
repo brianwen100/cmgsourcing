@@ -5,7 +5,6 @@ const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
 const SCOPES = [
   'https://www.googleapis.com/auth/gmail.compose',
-  'https://www.googleapis.com/auth/spreadsheets',
   'email',
   'profile',
 ].join(' ')
@@ -71,6 +70,7 @@ function StepBar({ step }) {
 export default function App() {
   const [step, setStep] = useState('idle')
   const [form, setForm] = useState({
+    sender_name: '',
     industry: '',
     target_title: '',
     website: '',
@@ -83,6 +83,7 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [drafts, setDrafts] = useState([])             // per-contact drafts from /api/draft
   const [commitResults, setCommitResults] = useState([])
+  const [scheduledTime, setScheduledTime] = useState('')  // ISO datetime-local value
 
   const [googleToken, setGoogleToken] = useState(null)
   const [user, setUser] = useState(null)
@@ -154,7 +155,7 @@ export default function App() {
   async function handleEnrich() {
     const toEnrich = rawContacts
       .map((c, i) => ({ ...c, _idx: i }))
-      .filter(c => selectedIds.has(c._idx) && !c.has_email)
+      .filter(c => selectedIds.has(c._idx) && !c.email)
 
     if (!toEnrich.length) return
     setStep('enriching')
@@ -164,10 +165,8 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           contacts: toEnrich.map(c => ({
+            apollo_id: c.apollo_id,
             first_name: c.first_name,
-            last_name: c.last_name,
-            organization_name: c.company,
-            domain: c.domain,
           })),
         }),
       })
@@ -207,6 +206,7 @@ export default function App() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           industry: form.industry,
+          sender_name: form.sender_name,
           contacts: approved.map(c => ({
             first_name: c.first_name,
             last_name: c.last_name,
@@ -233,6 +233,10 @@ export default function App() {
   async function handleCommit() {
     const approved = drafts.filter(d => d.approved)
     if (!approved.length) { setError('Approve at least one draft first.'); return }
+    if (!scheduledTime) { setError('Pick a send date and time first.'); return }
+
+    // Convert local datetime-local value to UTC ISO string
+    const isoTime = new Date(scheduledTime).toISOString()
 
     setStep('committing')
     const headers = { 'Content-Type': 'application/json' }
@@ -242,7 +246,7 @@ export default function App() {
       const res = await fetch(`${API_BASE}/api/commit`, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ contacts: approved }),
+        body: JSON.stringify({ contacts: approved, scheduled_time: isoTime }),
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
@@ -679,6 +683,11 @@ export default function App() {
             <form onSubmit={handleSearch}>
               <div className="form-grid">
                 <div className="form-group">
+                  <label className="form-label">Your Name</label>
+                  <input className="form-input" name="sender_name" placeholder="e.g. Brian"
+                    value={form.sender_name} onChange={handleChange} required />
+                </div>
+                <div className="form-group">
                   <label className="form-label">Industry</label>
                   <input className="form-input" name="industry" placeholder="e.g. Fintech"
                     value={form.industry} onChange={handleChange} required />
@@ -695,7 +704,7 @@ export default function App() {
                 </div>
                 <div className="form-group">
                   <label className="form-label">Number of Leads</label>
-                  <input className="form-input" type="number" name="limit" min={1} max={20}
+                  <input className="form-input" type="number" name="limit" min={1} max={1000}
                     value={form.limit} onChange={handleChange} required />
                 </div>
               </div>
@@ -866,16 +875,27 @@ export default function App() {
             </div>
 
             <div className="action-row">
+              <div className="form-group" style={{ marginBottom: 0 }}>
+                <label className="form-label">Schedule Send</label>
+                <input
+                  type="datetime-local"
+                  className="form-input"
+                  style={{ width: 'auto' }}
+                  value={scheduledTime}
+                  onChange={e => setScheduledTime(e.target.value)}
+                  min={new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 16)}
+                />
+              </div>
               <button
                 className="btn-primary"
                 onClick={handleCommit}
-                disabled={drafts.filter(d => d.approved).length === 0 || step === 'committing'}
+                disabled={drafts.filter(d => d.approved).length === 0 || !scheduledTime || step === 'committing'}
               >
                 {step === 'committing' ? <span className="spinner" /> : '↑'}
-                {step === 'committing' ? 'Committing…' : `Commit ${drafts.filter(d => d.approved).length} draft${drafts.filter(d => d.approved).length !== 1 ? 's' : ''}`}
+                {step === 'committing' ? 'Scheduling…' : `Schedule ${drafts.filter(d => d.approved).length} email${drafts.filter(d => d.approved).length !== 1 ? 's' : ''}`}
               </button>
               {!googleToken && (
-                <span className="gmail-warning">Sign in with Google to create Gmail drafts & Sheets rows</span>
+                <span className="gmail-warning">Sign in with Google to schedule sends</span>
               )}
               <button className="btn-ghost" onClick={() => setStep('reviewing')}>← Back to contacts</button>
             </div>
@@ -885,10 +905,10 @@ export default function App() {
         {/* ── Step: committing ── */}
         {step === 'committing' && (
           <div className="card">
-            <div className="section-label">Committing</div>
+            <div className="section-label">Scheduling</div>
             <div className="empty-state">
               <span className="spinner" style={{ width: 28, height: 28, borderWidth: 3, margin: '0 auto 16px', display: 'block' }} />
-              <p className="empty-text">Creating Gmail drafts and updating Google Sheet…</p>
+              <p className="empty-text">Scheduling emails via Gmail…</p>
             </div>
           </div>
         )}
@@ -897,20 +917,17 @@ export default function App() {
         {step === 'done' && (
           <div className="card">
             <div className="results-header">
-              <div className="section-label" style={{ marginBottom: 0 }}>Done</div>
-              <span className="lead-count badge-success">{commitResults.length} committed</span>
+              <div className="section-label" style={{ marginBottom: 0 }}>Scheduled</div>
+              <span className="lead-count badge-success">{commitResults.length} scheduled</span>
             </div>
+            <p style={{ fontSize: 12, color: '#475569', margin: '8px 0 16px' }}>
+              Emails will send at {scheduledTime ? new Date(scheduledTime).toLocaleString() : '—'}. Check the <strong>Scheduled</strong> folder in Gmail to confirm.
+            </p>
             <div className="done-list">
               {commitResults.map((r, i) => (
                 <div key={i} className="done-item">
                   <span className="cell-email">{r.email}</span>
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <span className="badge badge-success">Draft</span>
-                    {r.gmail_draft_url
-                      ? <a href={r.gmail_draft_url} target="_blank" rel="noopener noreferrer" className="draft-link">Open in Gmail ↗</a>
-                      : <span className="na">—</span>
-                    }
-                  </div>
+                  <span className={`badge ${r.status === 'Scheduled' ? 'badge-success' : ''}`}>{r.status}</span>
                 </div>
               ))}
             </div>

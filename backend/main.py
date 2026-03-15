@@ -10,10 +10,9 @@ from fastapi import FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
-from apollo import Contact, enrich_contact, find_contacts, search_contacts_raw
-from claude_email import apply_template, draft_company_email, draft_email
-from gmail import create_draft
-from sheets import append_lead
+from apollo import Contact, enrich_contact, search_contacts_raw
+from claude_email import apply_template, draft_company_email
+from gmail import schedule_send
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -54,10 +53,8 @@ class SearchRequest(BaseModel):
 
 
 class EnrichContactInput(BaseModel):
-    first_name: str
-    last_name: str
-    organization_name: str
-    domain: str
+    apollo_id: str
+    first_name: str  # kept for response passthrough only
 
 
 class EnrichRequest(BaseModel):
@@ -74,6 +71,7 @@ class DraftContactInput(BaseModel):
 
 class DraftRequest(BaseModel):
     industry: str
+    sender_name: str = ""
     contacts: List[DraftContactInput]
 
 
@@ -89,7 +87,7 @@ class CommitContactInput(BaseModel):
 
 class CommitRequest(BaseModel):
     contacts: List[CommitContactInput]
-    sheet_id: Optional[str] = None
+    scheduled_time: str          # ISO 8601 UTC e.g. "2026-04-01T09:00:00Z"
 
 
 # ── Step 1: health ─────────────────────────────────────────────────────────────
@@ -139,14 +137,11 @@ async def enrich_contacts(req: EnrichRequest):
     """
     results = []
     for item in req.contacts:
-        logger.info("Enriching %s %s @ %s", item.first_name, item.last_name, item.domain)
-        email = await enrich_contact(
-            item.first_name, item.last_name, item.organization_name, item.domain
-        )
+        logger.info("Enriching %s (apollo_id=%s)", item.first_name, item.apollo_id)
+        email = await enrich_contact(item.apollo_id)
         results.append(
             {
                 "first_name": item.first_name,
-                "last_name": item.last_name,
                 "email": email,
                 "enriched": True,
                 "enrichment_failed": email is None,
@@ -193,7 +188,7 @@ async def generate_drafts(req: DraftRequest):
                 apollo_id="",
                 has_email=bool(member.email),
             )
-            final = apply_template(template["subject"], template["body"], contact_obj, req.industry)
+            final = apply_template(template["subject"], template["body"], contact_obj, req.industry, req.sender_name)
             results.append(
                 {
                     "first_name": member.first_name,
@@ -212,7 +207,7 @@ async def generate_drafts(req: DraftRequest):
     return results
 
 
-# ── Step 8: Commit (Gmail drafts + Sheets rows) ───────────────────────────────
+# ── Step 8: Commit (Gmail scheduled send) ────────────────────────────────────
 
 @app.post("/api/commit")
 async def commit_leads(
@@ -220,112 +215,43 @@ async def commit_leads(
     authorization: Optional[str] = Header(None),
 ):
     """
-    Create Gmail drafts and append Sheets rows for each approved contact.
+    Schedule one personalized email per contact via Gmail scheduled send.
+    Emails appear in the Scheduled folder — not Drafts.
     Requires Authorization: Bearer <google_token> header.
     """
     google_token = _token_from_header(authorization)
 
     results = []
     for item in req.contacts:
-        gmail_draft_url = ""
-        sheet_row = None
-
         if not item.email:
             logger.warning("Skipping %s — no email", item.first_name)
             continue
 
+        message_id = ""
         if google_token:
             try:
-                gmail_draft_url = create_draft(item.email, item.subject, item.body, google_token)
-                logger.info("Gmail draft: %s → %s", item.email, gmail_draft_url)
+                message_id = schedule_send(
+                    to_email=item.email,
+                    subject=item.subject,
+                    body=item.body,
+                    google_token=google_token,
+                    delivery_time=req.scheduled_time,
+                )
+                logger.info("Scheduled send for %s at %s (id=%s)", item.email, req.scheduled_time, message_id)
             except Exception as exc:
-                logger.warning("Gmail draft failed for %s: %s", item.email, exc)
-
-            contact_obj = Contact(
-                first_name=item.first_name,
-                last_name=item.last_name,
-                email=item.email,
-                title=item.title,
-                company=item.company,
-                domain="",
-                apollo_id="",
-                has_email=True,
-            )
-            try:
-                append_lead(contact_obj, item.subject, item.body, google_token)
-                logger.info("Sheet row appended for %s", item.email)
-            except Exception as exc:
-                logger.warning("Sheets append failed for %s: %s", item.email, exc)
+                logger.warning("Scheduled send failed for %s: %s", item.email, exc)
         else:
-            logger.info("No Google token — skipping Gmail/Sheets for %s", item.email)
+            logger.info("No Google token — skipping send for %s", item.email)
 
         results.append(
             {
                 "email": item.email,
-                "gmail_draft_url": gmail_draft_url,
-                "sheet_row": sheet_row,
-                "status": "Draft",
+                "message_id": message_id,
+                "scheduled_time": req.scheduled_time,
+                "status": "Scheduled" if message_id else "Failed",
             }
         )
 
     return results
 
 
-# ── Legacy all-in-one endpoint (backward compat) ──────────────────────────────
-
-class LeadRequest(BaseModel):
-    industry: str
-    website: str
-    target_title: str = "CEO"
-    limit: int = 5
-
-
-@app.post("/api/leads")
-async def get_leads(
-    req: LeadRequest,
-    authorization: Optional[str] = Header(None),
-):
-    """Legacy single-call endpoint. Kept for backward compatibility."""
-    google_token = _token_from_header(authorization)
-    domain = _normalise_domain(req.website)
-
-    logger.info("Legacy /api/leads: domain=%s limit=%d", domain, req.limit)
-    contacts = await find_contacts(domain, req.target_title, req.limit)
-
-    results = []
-    for contact in contacts:
-        try:
-            email_draft = await draft_email(contact, req.industry)
-        except Exception as exc:
-            logger.error("Claude draft failed for %s: %s", contact.email, exc)
-            email_draft = {"subject": "", "body": ""}
-
-        subject = email_draft["subject"]
-        body = email_draft["body"]
-        gmail_draft_url = ""
-
-        if google_token:
-            try:
-                gmail_draft_url = create_draft(contact.email, subject, body, google_token)
-            except Exception as exc:
-                logger.warning("Gmail draft failed: %s", exc)
-            try:
-                append_lead(contact, subject, body, google_token)
-            except Exception as exc:
-                logger.warning("Sheets append failed: %s", exc)
-
-        results.append(
-            {
-                "first_name": contact.first_name,
-                "last_name": contact.last_name,
-                "email": contact.email,
-                "title": contact.title,
-                "company": contact.company,
-                "subject": subject,
-                "body": body,
-                "gmail_draft_url": gmail_draft_url,
-                "status": "Draft",
-            }
-        )
-
-    return results

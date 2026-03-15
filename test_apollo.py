@@ -1,35 +1,31 @@
 from dotenv import load_dotenv
-import os, httpx, json
+import os, httpx
 
 load_dotenv()
-
 key = os.getenv("APOLLO_API_KEY")
+headers = {"X-Api-Key": key, "Content-Type": "application/json"}
 
-resp = httpx.post(
-    "https://api.apollo.io/v1/mixed_people/api_search",
-    headers={"X-Api-Key": key, "Content-Type": "application/json"},
-    json={
-        "organization_domains": ["uber.com"],
-        "person_titles": ["Product Manager"],
-        "page": 1,
-        "per_page": 10,
-    },
-    timeout=30.0,
-)
+def search(domain):
+    # Mirror the fallback logic from apollo.py
+    base = {"person_titles": ["Product Manager"], "page": 1, "per_page": 5}
 
-print("Status:", resp.status_code)
-data = resp.json()
-people = data.get("people", [])
-print(f"People returned: {len(people)}\n")
+    r = httpx.post("https://api.apollo.io/v1/mixed_people/api_search",
+        headers=headers, json={**base, "q_organization_domains": domain}, timeout=30.0)
+    people = r.json().get("people", [])
 
-for p in people:
-    org = p.get("organization") or {}
-    org_name = org.get("name") or p.get("organization_name") or "— unknown"
-    org_domain = org.get("website_url") or "— no domain"
-    email = p.get("email") or "— no email"
-    print(f"  {p.get('first_name')} {p.get('last_name')}")
-    print(f"    Title:   {p.get('title')}")
-    print(f"    Company: {org_name}")
-    print(f"    Domain:  {org_domain}")
-    print(f"    Email:   {email}")
-    print()
+    if not people:
+        org_name = domain.split(".")[0]
+        print(f"  Domain miss — falling back to name '{org_name}'")
+        r = httpx.post("https://api.apollo.io/v1/mixed_people/api_search",
+            headers=headers, json={**base, "q_organization_name": org_name}, timeout=30.0)
+        people = r.json().get("people", [])
+
+    companies = set(
+        (p.get("organization") or {}).get("name") or p.get("organization_name") or "unknown"
+        for p in people
+    )
+    print(f"  {domain:<20} → {len(people)} results  {companies}")
+
+print("Domain + fallback test:")
+search("uber.com")      # should work via domain
+search("tinder.com")    # should fall back to name
