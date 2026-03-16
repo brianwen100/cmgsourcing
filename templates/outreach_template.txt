@@ -21,7 +21,7 @@ Hi {first_name},
 
 I hope you're doing well!
 
-My name is Brian, and I'm reaching out on behalf of CMG Strategy Consulting, a student-run organization at UC Berkeley that provides students with hands-on experience in consulting through real-world client projects.
+My name is {sender_name}, and I'm reaching out on behalf of CMG Strategy Consulting, a student-run organization at UC Berkeley that provides students with hands-on experience in consulting through real-world client projects.
 
 I'm currently an Account Manager at CMG and wanted to see if your team at {company} might be interested in partnering with us for our Fall 2026 cycle (September–December).
 

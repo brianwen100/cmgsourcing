@@ -2,11 +2,12 @@ import logging
 import os
 from typing import List, Optional
 
+import httpx
 from dotenv import load_dotenv
 
 load_dotenv(dotenv_path=os.path.join(os.path.dirname(__file__), "..", ".env"))
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import Depends, FastAPI, Header, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 
@@ -25,6 +26,32 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+ALLOWED_EMAILS: set[str] = {
+    e.strip().lower()
+    for e in os.getenv("ALLOWED_EMAILS", "").split(",")
+    if e.strip()
+}
+
+
+# ── Auth dependency ────────────────────────────────────────────────────────────
+
+async def require_auth(authorization: Optional[str] = Header(None)) -> str:
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Sign in with Google to use this tool.")
+    token = authorization.removeprefix("Bearer ")
+    async with httpx.AsyncClient() as client:
+        r = await client.get(
+            "https://oauth2.googleapis.com/tokeninfo",
+            params={"access_token": token},
+        )
+    if r.status_code != 200:
+        raise HTTPException(status_code=401, detail="Invalid or expired Google token.")
+    email = r.json().get("email", "").lower()
+    if not email or email not in ALLOWED_EMAILS:
+        raise HTTPException(status_code=403, detail=f"{email} is not authorised to use this tool.")
+    logger.info("Authenticated request from %s", email)
+    return email
 
 
 # ── Shared helpers ─────────────────────────────────────────────────────────────
@@ -100,7 +127,7 @@ async def health():
 # ── Step 2: Search (Apollo raw, no enrichment) ─────────────────────────────────
 
 @app.post("/api/search")
-async def search_leads(req: SearchRequest):
+async def search_leads(req: SearchRequest, user: str = Depends(require_auth)):
     """
     Apollo mixed_people/search only.
     Returns raw contacts — email may be null. No enrichment, no Claude.
@@ -130,7 +157,7 @@ async def search_leads(req: SearchRequest):
 # ── Step 4: Enrich (Apollo people/match, explicit opt-in) ─────────────────────
 
 @app.post("/api/enrich")
-async def enrich_contacts(req: EnrichRequest):
+async def enrich_contacts(req: EnrichRequest, user: str = Depends(require_auth)):
     """
     Apollo people/match for specific contacts.
     Only called when the user explicitly requests enrichment.
@@ -153,7 +180,7 @@ async def enrich_contacts(req: EnrichRequest):
 # ── Step 6: Draft (Claude — one call per unique company) ──────────────────────
 
 @app.post("/api/draft")
-async def generate_drafts(req: DraftRequest):
+async def generate_drafts(req: DraftRequest, user: str = Depends(require_auth)):
     """
     Claude email generation — ONE call per unique company.
     Returns per-contact drafts with {first_name}/{title} already substituted.
@@ -213,6 +240,7 @@ async def generate_drafts(req: DraftRequest):
 async def commit_leads(
     req: CommitRequest,
     authorization: Optional[str] = Header(None),
+    user: str = Depends(require_auth),
 ):
     """
     Schedule one personalized email per contact via Gmail scheduled send.

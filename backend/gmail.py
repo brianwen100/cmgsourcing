@@ -1,15 +1,35 @@
 import base64
+import os
+from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from email.mime.base import MIMEBase
+from email import encoders
 
 from google.oauth2.credentials import Credentials
 from googleapiclient.discovery import build
 
+_PDF_PATH = os.path.join(os.path.dirname(__file__), "[General] Spring 2026 PitchBook.pdf")
+
 
 def _build_raw(to_email: str, subject: str, body: str) -> str:
-    message = MIMEText(body)
-    message["to"] = to_email
-    message["subject"] = subject
-    return base64.urlsafe_b64encode(message.as_bytes()).decode()
+    msg = MIMEMultipart()
+    msg["to"] = to_email
+    msg["subject"] = subject
+    msg.attach(MIMEText(body, "plain"))
+
+    if os.path.exists(_PDF_PATH):
+        with open(_PDF_PATH, "rb") as f:
+            part = MIMEBase("application", "pdf")
+            part.set_payload(f.read())
+            encoders.encode_base64(part)
+            part.add_header(
+                "Content-Disposition",
+                "attachment",
+                filename="CMG Strategy Consulting — Spring 2026.pdf",
+            )
+            msg.attach(part)
+
+    return base64.urlsafe_b64encode(msg.as_bytes()).decode()
 
 
 def schedule_send(

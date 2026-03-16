@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react'
+import cmgLogo from './cmg_logo.png'
 
 const API_BASE = 'http://localhost:8000'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
@@ -85,6 +86,12 @@ export default function App() {
   const [commitResults, setCommitResults] = useState([])
   const [scheduledTime, setScheduledTime] = useState('')  // ISO datetime-local value
 
+  // Carousel index for draft editing
+  const [currentDraftIndex, setCurrentDraftIndex] = useState(0)
+
+  // Logo fallback
+  const [logoError, setLogoError] = useState(false)
+
   const [googleToken, setGoogleToken] = useState(null)
   const [user, setUser] = useState(null)
   const tokenClientRef = useRef(null)
@@ -134,7 +141,7 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/api/search`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${googleToken}` },
         body: JSON.stringify(form),
       })
       if (!res.ok) {
@@ -162,7 +169,7 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/api/enrich`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${googleToken}` },
         body: JSON.stringify({
           contacts: toEnrich.map(c => ({
             apollo_id: c.apollo_id,
@@ -203,7 +210,7 @@ export default function App() {
     try {
       const res = await fetch(`${API_BASE}/api/draft`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${googleToken}` },
         body: JSON.stringify({
           industry: form.industry,
           sender_name: form.sender_name,
@@ -222,6 +229,7 @@ export default function App() {
       }
       const results = await res.json()
       setDrafts(results.map(d => ({ ...d, approved: false })))
+      setCurrentDraftIndex(0)
       setStep('editing')
     } catch (err) {
       setError(err.message)
@@ -283,7 +291,12 @@ export default function App() {
   }
 
   function toggleDraftApproval(i) {
+    const wasApproved = drafts[i].approved
     setDrafts(prev => prev.map((d, idx) => idx === i ? { ...d, approved: !d.approved } : d))
+    // auto-advance to next card when approving (not when un-approving)
+    if (!wasApproved && i < drafts.length - 1) {
+      setCurrentDraftIndex(i + 1)
+    }
   }
 
   const isWorking = ['searching', 'enriching', 'drafting', 'committing'].includes(step)
@@ -296,13 +309,10 @@ export default function App() {
         *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
         body {
-          background: #060b18;
+          background: #111111;
           min-height: 100vh;
           font-family: 'Inter', system-ui, -apple-system, sans-serif;
           color: #e2e8f0;
-          background-image:
-            radial-gradient(ellipse 80% 50% at 50% -20%, rgba(59,130,246,0.12) 0%, transparent 60%),
-            radial-gradient(ellipse 60% 40% at 80% 80%, rgba(124,58,237,0.07) 0%, transparent 50%);
         }
 
         @keyframes spin    { to { transform: rotate(360deg); } }
@@ -339,15 +349,14 @@ export default function App() {
           transition: background 0.2s, border-color 0.2s;
         }
         .step-node.done {
-          background: rgba(16,185,129,0.15);
-          border: 1.5px solid rgba(16,185,129,0.4);
-          color: #34d399;
+          background: rgba(255,255,255,0.12);
+          border: 1.5px solid rgba(255,255,255,0.4);
+          color: #fff;
         }
         .step-node.active {
-          background: rgba(59,130,246,0.2);
-          border: 1.5px solid rgba(59,130,246,0.6);
-          color: #93c5fd;
-          box-shadow: 0 0 10px rgba(59,130,246,0.3);
+          background: rgba(255,255,255,0.15);
+          border: 1.5px solid rgba(255,255,255,0.7);
+          color: #fff;
         }
         .step-node.upcoming {
           background: rgba(255,255,255,0.03);
@@ -357,19 +366,19 @@ export default function App() {
         .step-label {
           margin-left: 8px; font-size: 12px; font-weight: 500; white-space: nowrap;
         }
-        .step-label.done    { color: #34d399; }
-        .step-label.active  { color: #93c5fd; }
+        .step-label.done    { color: #fff; }
+        .step-label.active  { color: #fff; }
         .step-label.upcoming { color: #334155; }
         .step-connector {
           width: 32px; height: 1.5px; margin: 0 10px; flex-shrink: 0;
           transition: background 0.2s;
         }
-        .step-connector.done    { background: rgba(16,185,129,0.3); }
+        .step-connector.done    { background: rgba(255,255,255,0.25); }
         .step-connector.upcoming { background: rgba(255,255,255,0.06); }
         .step-spinner {
           display: block;
           width: 11px; height: 11px;
-          border: 2px solid rgba(147,197,253,0.3); border-top-color: #93c5fd;
+          border: 2px solid rgba(255,255,255,0.3); border-top-color: #fff;
           border-radius: 50%; animation: spin 0.65s linear infinite;
         }
 
@@ -381,13 +390,13 @@ export default function App() {
         .logo-row { display: flex; align-items: center; gap: 12px; margin-bottom: 5px; }
         .logo-icon {
           width: 34px; height: 34px; border-radius: 8px;
-          background: linear-gradient(135deg, #3b82f6 0%, #7c3aed 100%);
+          background: #222;
           display: flex; align-items: center; justify-content: center; font-size: 16px;
         }
+        .logo-img { height: 52px; width: auto; object-fit: contain; }
         .app-title {
           font-size: 22px; font-weight: 700; letter-spacing: -0.3px;
-          background: linear-gradient(90deg, #e2e8f0 30%, #94a3b8);
-          -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+          color: #f0f0f0;
         }
         .app-subtitle { font-size: 13px; color: #475569; }
 
@@ -423,12 +432,12 @@ export default function App() {
 
         .status-pill {
           display: flex; align-items: center; gap: 7px;
-          background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.2);
-          border-radius: 20px; padding: 5px 12px; font-size: 12px; color: #34d399; font-weight: 500;
+          background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 20px; padding: 5px 12px; font-size: 12px; color: #ccc; font-weight: 500;
         }
         .status-dot {
           width: 7px; height: 7px; border-radius: 50%;
-          background: #10b981; animation: pulseDot 2s ease infinite;
+          background: #fff; animation: pulseDot 2s ease infinite;
         }
 
         /* ── Card ──────────────────────────────────────────────────────── */
@@ -454,9 +463,9 @@ export default function App() {
         }
         .form-input::placeholder { color: #334155; }
         .form-input:focus {
-          border-color: rgba(59,130,246,0.5);
-          box-shadow: 0 0 0 3px rgba(59,130,246,0.1);
-          background: rgba(59,130,246,0.04);
+          border-color: rgba(255,255,255,0.5);
+          box-shadow: 0 0 0 3px rgba(255,255,255,0.06);
+          background: rgba(255,255,255,0.04);
         }
         input[type=number]::-webkit-inner-spin-button { opacity: 0.3; }
 
@@ -466,15 +475,13 @@ export default function App() {
         .btn-primary {
           display: inline-flex; align-items: center; gap: 8px;
           padding: 10px 24px;
-          background: linear-gradient(135deg, #3b82f6 0%, #6366f1 100%);
-          color: #fff; border: none; border-radius: 9px;
+          background: #f5f5f5;
+          color: #111; border: none; border-radius: 9px;
           font-size: 13.5px; font-weight: 600; cursor: pointer; font-family: inherit;
-          transition: opacity 0.15s, transform 0.15s, box-shadow 0.15s;
-          box-shadow: 0 0 20px rgba(59,130,246,0.25);
+          transition: opacity 0.15s, transform 0.15s;
         }
         .btn-primary:hover:not(:disabled) {
           opacity: 0.9; transform: translateY(-1px);
-          box-shadow: 0 0 28px rgba(59,130,246,0.4);
         }
         .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
@@ -515,8 +522,8 @@ export default function App() {
         /* ── Contacts review table ─────────────────────────────────────── */
         .results-header { display: flex; align-items: center; justify-content: space-between; }
         .lead-count {
-          font-size: 12px; background: rgba(59,130,246,0.12);
-          border: 1px solid rgba(59,130,246,0.2); color: #93c5fd;
+          font-size: 12px; background: rgba(255,255,255,0.05);
+          border: 1px solid rgba(255,255,255,0.12); color: #ccc;
           border-radius: 20px; padding: 3px 10px; font-weight: 500;
         }
         .empty-state { text-align: center; padding: 52px 0 40px; }
@@ -538,7 +545,7 @@ export default function App() {
           vertical-align: middle; color: #cbd5e1;
         }
         .cell-name  { font-weight: 500; color: #e2e8f0; }
-        .cell-email { color: #7dd3fc; font-size: 12.5px; }
+        .cell-email { color: #ccc; font-size: 12.5px; }
         .cell-title { color: #94a3b8; font-size: 12.5px; }
 
         .no-email {
@@ -550,32 +557,36 @@ export default function App() {
         .badge {
           display: inline-block; padding: 3px 9px; border-radius: 20px;
           font-size: 11px; font-weight: 600;
-          background: rgba(59,130,246,0.1); border: 1px solid rgba(59,130,246,0.2);
-          color: #93c5fd;
+          background: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.15);
+          color: #ccc;
         }
         .badge-success {
-          background: rgba(16,185,129,0.1); border-color: rgba(16,185,129,0.25); color: #34d399;
+          background: rgba(255,255,255,0.06); border-color: rgba(255,255,255,0.15); color: #ccc;
         }
 
         /* checkbox */
-        input[type=checkbox] { accent-color: #3b82f6; width: 15px; height: 15px; cursor: pointer; }
+        input[type=checkbox] { accent-color: #fff; width: 15px; height: 15px; cursor: pointer; }
 
-        /* ── Draft editor cards ─────────────────────────────────────────── */
-        .draft-cards { display: flex; flex-direction: column; gap: 20px; margin-top: 8px; }
-        .draft-card {
-          background: rgba(255,255,255,0.025);
-          border: 1px solid rgba(255,255,255,0.07);
-          border-radius: 12px; padding: 20px 24px;
-          transition: border-color 0.2s;
+        /* ── Draft carousel ─────────────────────────────────────────────── */
+        .carousel-wrap {
+          margin-top: 16px;
         }
-        .draft-card.approved {
-          border-color: rgba(16,185,129,0.3);
-          background: rgba(16,185,129,0.03);
+        .carousel-nav {
+          display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
         }
-        .draft-card-header {
-          display: flex; align-items: center; justify-content: space-between;
-          margin-bottom: 16px;
+        .carousel-arrow {
+          width: 34px; height: 34px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.12);
+          background: rgba(255,255,255,0.04); color: #ccc; font-size: 16px;
+          cursor: pointer; display: flex; align-items: center; justify-content: center;
+          transition: background 0.15s; font-family: inherit;
         }
+        .carousel-arrow:hover:not(:disabled) { background: rgba(255,255,255,0.1); }
+        .carousel-arrow:disabled { opacity: 0.25; cursor: not-allowed; }
+        .carousel-counter {
+          font-size: 13px; color: #888; font-weight: 500;
+        }
+
+        /* ── Draft editor fields ─────────────────────────────────────────── */
         .draft-person {
           display: flex; flex-direction: column; gap: 2px;
         }
@@ -592,11 +603,11 @@ export default function App() {
           transition: border-color 0.2s, box-shadow 0.2s;
         }
         .draft-input:focus {
-          border-color: rgba(59,130,246,0.5);
-          box-shadow: 0 0 0 3px rgba(59,130,246,0.08);
+          border-color: rgba(255,255,255,0.5);
+          box-shadow: 0 0 0 3px rgba(255,255,255,0.06);
         }
         .draft-textarea {
-          min-height: 120px; resize: vertical; line-height: 1.55; white-space: pre-wrap;
+          min-height: 360px; resize: vertical; line-height: 1.55; white-space: pre-wrap;
         }
 
         .placeholder-hint {
@@ -611,10 +622,10 @@ export default function App() {
         }
         .draft-link {
           display: inline-flex; align-items: center; gap: 4px;
-          color: #818cf8; font-size: 12.5px; font-weight: 500;
+          color: #ccc; font-size: 12.5px; font-weight: 500;
           text-decoration: none; transition: color 0.15s;
         }
-        .draft-link:hover { color: #a5b4fc; }
+        .draft-link:hover { color: #fff; }
         .na { color: #1e293b; }
 
         .gmail-warning { font-size: 12px; color: #64748b; display: flex; align-items: center; gap: 6px; }
@@ -631,10 +642,19 @@ export default function App() {
         <div className="header">
           <div>
             <div className="logo-row">
-              <div className="logo-icon">⚡</div>
-              <span className="app-title">CMG Lead Gen</span>
+              {logoError ? (
+                <div className="logo-icon">⚡</div>
+              ) : (
+                <img
+                  src={cmgLogo}
+                  alt="CMG"
+                  className="logo-img"
+                  onError={() => setLogoError(true)}
+                />
+              )}
+              <span className="app-title">Magic Outreach</span>
             </div>
-            <p className="app-subtitle">CMG Strategy Consulting · UC Berkeley — Automated client sourcing & outreach</p>
+            <p className="app-subtitle">Automated client outreach</p>
           </div>
           <div className="auth-area">
             {user ? (
@@ -677,7 +697,25 @@ export default function App() {
         )}
 
         {/* ── Step: idle / searching — Search Form ── */}
-        {(step === 'idle' || step === 'searching') && (
+        {(step === 'idle' || step === 'searching') && !googleToken && (
+          <div className="card" style={{ textAlign: 'center', padding: '60px 32px' }}>
+            <div style={{ fontSize: 32, marginBottom: 16, opacity: 0.4 }}>🔒</div>
+            <p style={{ fontSize: 15, fontWeight: 600, color: '#e2e8f0', marginBottom: 8 }}>Sign in required</p>
+            <p style={{ fontSize: 13, color: '#475569', marginBottom: 24 }}>
+              Connect your Google account to search for leads and schedule emails.
+            </p>
+            <button className="btn-google" onClick={handleSignIn} style={{ margin: '0 auto' }}>
+              <svg className="google-icon" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+                <path d="M9 18c2.43 0 4.467-.806 5.956-2.184l-2.908-2.258c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+                <path d="M3.964 10.707A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.707V4.961H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.039l3.007-2.332z" fill="#FBBC05"/>
+                <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.961L3.964 7.293C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+              </svg>
+              Sign in with Google
+            </button>
+          </div>
+        )}
+        {(step === 'idle' || step === 'searching') && googleToken && (
           <div className="card">
             <div className="section-label">Search Parameters</div>
             <form onSubmit={handleSearch}>
@@ -713,11 +751,6 @@ export default function App() {
                   {step === 'searching' ? <span className="spinner" /> : '→'}
                   {step === 'searching' ? 'Searching…' : 'Find Leads'}
                 </button>
-                {!googleToken && (
-                  <span className="gmail-warning">
-                    Sign in with Google to enable Gmail drafts & Sheets export
-                  </span>
-                )}
               </div>
             </form>
           </div>
@@ -814,12 +847,12 @@ export default function App() {
             <div className="section-label">Generating Draft</div>
             <div className="empty-state">
               <span className="spinner" style={{ width: 28, height: 28, borderWidth: 3, margin: '0 auto 16px', display: 'block' }} />
-              <p className="empty-text">Claude is writing one email template per company…</p>
+              <p className="empty-text">Cooking up a draft for you…</p>
             </div>
           </div>
         )}
 
-        {/* ── Step: editing — Draft Editor ── */}
+        {/* ── Step: editing — Draft Carousel ── */}
         {step === 'editing' && (
           <div className="card">
             <div className="results-header">
@@ -829,50 +862,65 @@ export default function App() {
               </span>
             </div>
 
-            <p style={{ fontSize: 12, color: '#475569', marginTop: 8, marginBottom: 4 }}>
-              Edit subject and body below. <code style={{ color: '#7dd3fc' }}>{'{first_name}'}</code> and <code style={{ color: '#7dd3fc' }}>{'{title}'}</code> are substituted per contact at send time.
-            </p>
-
-            <div className="draft-cards">
-              {drafts.map((d, i) => (
-                <div key={i} className={`draft-card ${d.approved ? 'approved' : ''}`}>
-                  <div className="draft-card-header">
-                    <div className="draft-person">
-                      <span className="draft-name">{d.first_name} {d.last_name}</span>
-                      <span className="draft-meta">{d.title} · {d.company} · {d.email}</span>
-                    </div>
+            {drafts.length > 0 && (() => {
+              const d = drafts[currentDraftIndex]
+              const i = currentDraftIndex
+              return (
+                <div className="carousel-wrap">
+                  {/* navigation header */}
+                  <div className="carousel-nav">
                     <button
-                      className={d.approved ? 'btn-primary' : 'btn-secondary'}
-                      style={{ padding: '7px 16px', fontSize: 12 }}
-                      onClick={() => toggleDraftApproval(i)}
-                    >
-                      {d.approved ? '✓ Approved' : 'Approve'}
-                    </button>
+                      className="carousel-arrow"
+                      onClick={() => setCurrentDraftIndex(n => Math.max(0, n - 1))}
+                      disabled={currentDraftIndex === 0}
+                    >←</button>
+                    <span className="carousel-counter">{i + 1} of {drafts.length}</span>
+                    <button
+                      className="carousel-arrow"
+                      onClick={() => setCurrentDraftIndex(n => Math.min(drafts.length - 1, n + 1))}
+                      disabled={currentDraftIndex === drafts.length - 1}
+                    >→</button>
+                    <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: '7px 18px', fontSize: 12 }}
+                        onClick={() => setDrafts(prev => prev.map(dr => ({ ...dr, approved: true })))}
+                        disabled={drafts.every(dr => dr.approved)}
+                      >
+                        Approve All
+                      </button>
+                      <button
+                        className={d.approved ? 'btn-primary' : 'btn-secondary'}
+                        style={{ padding: '7px 18px', fontSize: 12 }}
+                        onClick={() => toggleDraftApproval(i)}
+                      >
+                        {d.approved ? '✓ Approved' : 'Approve'}
+                      </button>
+                    </div>
                   </div>
 
+                  {/* person info */}
+                  <div className="draft-person" style={{ marginBottom: 18 }}>
+                    <span className="draft-name">{d.first_name} {d.last_name}</span>
+                    <span className="draft-meta">{d.title} · {d.company} · {d.email}</span>
+                  </div>
+
+                  {/* subject */}
                   <div className="draft-field">
                     <label className="draft-field-label">Subject</label>
-                    <input
-                      className="draft-input"
-                      value={d.subject}
-                      onChange={e => updateDraft(i, 'subject', e.target.value)}
-                    />
+                    <input className="draft-input" value={d.subject}
+                      onChange={e => updateDraft(i, 'subject', e.target.value)} />
                   </div>
 
+                  {/* body */}
                   <div className="draft-field">
                     <label className="draft-field-label">Body</label>
-                    <textarea
-                      className="draft-input draft-textarea"
-                      value={d.body}
-                      onChange={e => updateDraft(i, 'body', e.target.value)}
-                    />
-                    <p className="placeholder-hint">
-                      Tip: <code>{'{first_name}'}</code> and <code>{'{title}'}</code> will be substituted for each recipient.
-                    </p>
+                    <textarea className="draft-input draft-textarea" value={d.body}
+                      onChange={e => updateDraft(i, 'body', e.target.value)} />
                   </div>
                 </div>
-              ))}
-            </div>
+              )
+            })()}
 
             <div className="action-row">
               <div className="form-group" style={{ marginBottom: 0 }}>
@@ -894,9 +942,6 @@ export default function App() {
                 {step === 'committing' ? <span className="spinner" /> : '↑'}
                 {step === 'committing' ? 'Scheduling…' : `Schedule ${drafts.filter(d => d.approved).length} email${drafts.filter(d => d.approved).length !== 1 ? 's' : ''}`}
               </button>
-              {!googleToken && (
-                <span className="gmail-warning">Sign in with Google to schedule sends</span>
-              )}
               <button className="btn-ghost" onClick={() => setStep('reviewing')}>← Back to contacts</button>
             </div>
           </div>
