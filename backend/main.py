@@ -13,7 +13,7 @@ from pydantic import BaseModel
 
 from apollo import Contact, enrich_contact, search_contacts_raw
 from claude_email import apply_template, draft_company_email
-from db import already_contacted, get_all_contacted_ids, get_leaderboard, mark_contacted
+from db import already_contacted, get_all_contacted_ids, get_available_weeks, get_leaderboard, mark_contacted
 from gmail import schedule_send
 
 logging.basicConfig(level=logging.INFO)
@@ -132,9 +132,14 @@ async def health():
 
 # ── Leaderboard ─────────────────────────────────────────────────────────────────
 
+@app.get("/api/leaderboard/weeks")
+async def leaderboard_weeks():
+    return get_available_weeks()
+
+
 @app.get("/api/leaderboard")
-async def leaderboard():
-    return get_leaderboard()
+async def leaderboard(week_start: Optional[str] = None):
+    return get_leaderboard(week_start=week_start)
 
 
 # ── Step 2: Search (Apollo raw, no enrichment) ─────────────────────────────────

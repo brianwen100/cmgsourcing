@@ -1,5 +1,5 @@
 import os
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 
 from supabase import create_client, Client
 
@@ -49,15 +49,38 @@ def mark_contacted(contacts: list[dict], sent_by: str = "") -> None:
         get_db().table("contacted").upsert(rows, on_conflict="apollo_id").execute()
 
 
-def get_leaderboard() -> list[dict]:
-    """Return send counts grouped by sender, descending."""
+def _week_start(dt: datetime) -> datetime:
+    """Return the Sunday 00:00:00 UTC of the week containing dt."""
+    days_since_sunday = dt.isoweekday() % 7   # Sun=0, Mon=1 … Sat=6
+    return (dt - timedelta(days=days_since_sunday)).replace(
+        hour=0, minute=0, second=0, microsecond=0
+    )
+
+
+def get_available_weeks() -> list[str]:
+    """Return ISO date strings (YYYY-MM-DD) for every Sunday that has data, newest first."""
     res = (
         get_db()
         .table("contacted")
-        .select("sent_by")
-        .not_.is_("sent_by", "null")
+        .select("created_at")
+        .not_.is_("created_at", "null")
         .execute()
     )
+    weeks: set[str] = set()
+    for row in res.data:
+        dt = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
+        weeks.add(_week_start(dt).date().isoformat())
+    return sorted(weeks, reverse=True)
+
+
+def get_leaderboard(week_start: str | None = None) -> list[dict]:
+    """Return send counts grouped by sender for the given week (or all time)."""
+    query = get_db().table("contacted").select("sent_by").not_.is_("sent_by", "null")
+    if week_start:
+        start_dt = datetime.fromisoformat(week_start).replace(tzinfo=timezone.utc)
+        end_dt = start_dt + timedelta(days=7)
+        query = query.gte("created_at", start_dt.isoformat()).lt("created_at", end_dt.isoformat())
+    res = query.execute()
     counts: dict[str, int] = {}
     for row in res.data:
         sender = row["sent_by"]

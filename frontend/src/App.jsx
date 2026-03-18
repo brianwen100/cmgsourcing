@@ -39,6 +39,26 @@ function stepIndex(step) {
   return STEPS.findIndex(s => s.key === display)
 }
 
+// ── Week helpers ───────────────────────────────────────────────────────────────
+function getWeekStart(date = new Date()) {
+  const d = new Date(date)
+  d.setUTCHours(0, 0, 0, 0)
+  d.setUTCDate(d.getUTCDate() - d.getUTCDay()) // back to Sunday
+  return d.toISOString().slice(0, 10)
+}
+
+function weekLabel(weekStr, index) {
+  const thisWeek = getWeekStart()
+  const lastWeekDate = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000)
+  const lastWeek = getWeekStart(lastWeekDate)
+  if (weekStr === thisWeek) return 'This Week'
+  if (weekStr === lastWeek) return 'Last Week'
+  const start = new Date(weekStr + 'T00:00:00')
+  const end   = new Date(start.getTime() + 6 * 24 * 60 * 60 * 1000)
+  const fmt = d => d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  return `${fmt(start)} – ${fmt(end)}`
+}
+
 // ── Step Progress Bar ──────────────────────────────────────────────────────────
 function StepBar({ step }) {
   const current = stepIndex(step)
@@ -98,12 +118,32 @@ export default function App() {
   // Leaderboard
   const [leaderboard, setLeaderboard] = useState([])
   const [showLeaderboard, setShowLeaderboard] = useState(false)
+  const [availableWeeks, setAvailableWeeks] = useState([])
+  const [selectedWeek, setSelectedWeek] = useState('') // '' = all time
+
+  // Fetch available weeks whenever leaderboard opens or after a commit
   useEffect(() => {
-    fetch(`${API_BASE}/api/leaderboard`)
+    fetch(`${API_BASE}/api/leaderboard/weeks`)
+      .then(r => r.ok ? r.json() : [])
+      .then(weeks => {
+        setAvailableWeeks(weeks)
+        // Default to this week if available, otherwise all time
+        const thisWeek = getWeekStart(new Date())
+        if (weeks.includes(thisWeek)) setSelectedWeek(thisWeek)
+        else if (weeks.length > 0) setSelectedWeek(weeks[0])
+      })
+      .catch(() => {})
+  }, [commitResults, showLeaderboard])
+
+  useEffect(() => {
+    const url = selectedWeek
+      ? `${API_BASE}/api/leaderboard?week_start=${selectedWeek}`
+      : `${API_BASE}/api/leaderboard`
+    fetch(url)
       .then(r => r.ok ? r.json() : [])
       .then(setLeaderboard)
       .catch(() => {})
-  }, [commitResults])   // refresh after each commit
+  }, [selectedWeek, commitResults])
 
   const [googleToken, setGoogleToken] = useState(null)
   const [user, setUser] = useState(null)
@@ -678,6 +718,16 @@ export default function App() {
         }
         .enrichment-note { font-size: 12px; color: #64748b; }
 
+        /* ── Week select ────────────────────────────────────────────────── */
+        .week-select {
+          background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 8px; padding: 5px 10px; font-size: 12px; color: #cbd5e1;
+          font-family: inherit; cursor: pointer; outline: none;
+          transition: border-color 0.15s;
+        }
+        .week-select:hover { border-color: rgba(255,255,255,0.25); }
+        .week-select option { background: #1a1a1a; color: #e2e8f0; }
+
         /* ── Leaderboard page ───────────────────────────────────────────── */
         .leaderboard-page { }
         .leaderboard-row {
@@ -787,7 +837,19 @@ export default function App() {
           <div className="card leaderboard-page">
             <div className="results-header" style={{ marginBottom: 20 }}>
               <div className="section-label" style={{ marginBottom: 0 }}>Leaderboard</div>
-              <span className="lead-count">{leaderboard.reduce((s, e) => s + e.count, 0)} total sends</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                <span className="lead-count">{leaderboard.reduce((s, e) => s + e.count, 0)} sends</span>
+                <select
+                  className="week-select"
+                  value={selectedWeek}
+                  onChange={e => setSelectedWeek(e.target.value)}
+                >
+                  {availableWeeks.map((w, i) => (
+                    <option key={w} value={w}>{weekLabel(w, i)}</option>
+                  ))}
+                  <option value="">All Time</option>
+                </select>
+              </div>
             </div>
             {leaderboard.length === 0 ? (
               <div className="leaderboard-empty-state">No emails sent yet — go find some leads!</div>
