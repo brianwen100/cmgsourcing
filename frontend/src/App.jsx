@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import cmgLogo from './cmg_logo.png'
 
-const API_BASE = 'http://localhost:8000'
+const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8000'
 const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID
 
 const SCOPES = [

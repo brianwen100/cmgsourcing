@@ -23,7 +23,10 @@ app = FastAPI(title="CMG Lead Gen API")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173"],
+    allow_origins=[
+        "http://localhost:5173",
+        "https://cmgsourcing-production.up.railway.app",  # update once Vercel URL is known
+    ],
     allow_methods=["*"],
     allow_headers=["*"],
 )
