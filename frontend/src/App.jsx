@@ -757,13 +757,15 @@ export default function App() {
                 <div className="no-auth-note">⚠ VITE_GOOGLE_CLIENT_ID not set</div>
               )
             )}
-            <button
-              className={showLeaderboard ? 'btn-primary' : 'btn-secondary'}
-              style={{ padding: '7px 16px', fontSize: 12 }}
-              onClick={() => setShowLeaderboard(v => !v)}
-            >
-              {showLeaderboard ? '← Source' : '🏆 Leaderboard'}
-            </button>
+            {user && (
+              <button
+                className={showLeaderboard ? 'btn-primary' : 'btn-secondary'}
+                style={{ padding: '7px 16px', fontSize: 12 }}
+                onClick={() => setShowLeaderboard(v => !v)}
+              >
+                {showLeaderboard ? '← Source' : '🏆 Leaderboard'}
+              </button>
+            )}
             <div className="status-pill"><span className="status-dot" />Live</div>
           </div>
         </div>
