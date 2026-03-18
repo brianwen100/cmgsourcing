@@ -13,6 +13,7 @@ from pydantic import BaseModel
 
 from apollo import Contact, enrich_contact, search_contacts_raw
 from claude_email import apply_template, draft_company_email
+from db import already_contacted, get_all_contacted_ids, get_leaderboard, mark_contacted
 from gmail import schedule_send
 
 logging.basicConfig(level=logging.INFO)
@@ -89,6 +90,7 @@ class EnrichRequest(BaseModel):
 
 
 class DraftContactInput(BaseModel):
+    apollo_id: str = ""
     first_name: str
     last_name: str
     email: str
@@ -103,6 +105,7 @@ class DraftRequest(BaseModel):
 
 
 class CommitContactInput(BaseModel):
+    apollo_id: str = ""
     first_name: str
     last_name: str
     email: str
@@ -124,6 +127,13 @@ async def health():
     return {"status": "ok"}
 
 
+# ── Leaderboard ─────────────────────────────────────────────────────────────────
+
+@app.get("/api/leaderboard")
+async def leaderboard():
+    return get_leaderboard()
+
+
 # ── Step 2: Search (Apollo raw, no enrichment) ─────────────────────────────────
 
 @app.post("/api/search")
@@ -135,8 +145,13 @@ async def search_leads(req: SearchRequest, user: str = Depends(require_auth)):
     domain = _normalise_domain(req.website)
     logger.info("Search: domain=%s title=%s limit=%d", domain, req.target_title, req.limit)
 
-    contacts = await search_contacts_raw(domain, req.target_title, req.limit)
-    logger.info("Found %d raw contacts", len(contacts))
+    # Fetch all previously contacted IDs upfront so Apollo pagination
+    # keeps going until it finds `limit` genuinely fresh contacts.
+    contacted_ids = get_all_contacted_ids()
+    logger.info("Loaded %d contacted IDs for dedup", len(contacted_ids))
+
+    contacts = await search_contacts_raw(domain, req.target_title, req.limit, contacted_ids)
+    logger.info("Returning %d fresh contacts", len(contacts))
 
     return [
         {
@@ -218,6 +233,7 @@ async def generate_drafts(req: DraftRequest, user: str = Depends(require_auth)):
             final = apply_template(template["subject"], template["body"], contact_obj, req.industry, req.sender_name)
             results.append(
                 {
+                    "apollo_id": member.apollo_id,
                     "first_name": member.first_name,
                     "last_name": member.last_name,
                     "email": member.email,
@@ -279,6 +295,12 @@ async def commit_leads(
                 "status": "Scheduled" if message_id else "Failed",
             }
         )
+
+    # Record everyone successfully sent to so they're filtered in future searches
+    sent = [item.dict() for item, r in zip(req.contacts, results) if r["status"] == "Scheduled"]
+    if sent:
+        mark_contacted(sent, sent_by=user)
+        logger.info("Marked %d contacts as contacted in Supabase (sent_by=%s)", len(sent), user)
 
     return results
 

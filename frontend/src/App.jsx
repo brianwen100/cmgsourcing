@@ -92,9 +92,33 @@ export default function App() {
   // Logo fallback
   const [logoError, setLogoError] = useState(false)
 
+  // User menu
+  const [showUserMenu, setShowUserMenu] = useState(false)
+
+  // Leaderboard
+  const [leaderboard, setLeaderboard] = useState([])
+  const [showLeaderboard, setShowLeaderboard] = useState(false)
+  useEffect(() => {
+    fetch(`${API_BASE}/api/leaderboard`)
+      .then(r => r.ok ? r.json() : [])
+      .then(setLeaderboard)
+      .catch(() => {})
+  }, [commitResults])   // refresh after each commit
+
   const [googleToken, setGoogleToken] = useState(null)
   const [user, setUser] = useState(null)
   const tokenClientRef = useRef(null)
+  const userMenuRef = useRef(null)
+
+  useEffect(() => {
+    function handleClickOutside(e) {
+      if (userMenuRef.current && !userMenuRef.current.contains(e.target)) {
+        setShowUserMenu(false)
+      }
+    }
+    document.addEventListener('mousedown', handleClickOutside)
+    return () => document.removeEventListener('mousedown', handleClickOutside)
+  }, [])
 
   // Load GIS
   useEffect(() => {
@@ -215,6 +239,7 @@ export default function App() {
           industry: form.industry,
           sender_name: form.sender_name,
           contacts: approved.map(c => ({
+            apollo_id: c.apollo_id,
             first_name: c.first_name,
             last_name: c.last_name,
             email: c.email,
@@ -417,9 +442,27 @@ export default function App() {
           display: flex; align-items: center; gap: 9px;
           background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.08);
           border-radius: 24px; padding: 5px 14px 5px 6px;
+          cursor: pointer; transition: background 0.15s, border-color 0.15s;
         }
+        .user-pill:hover { background: rgba(255,255,255,0.08); border-color: rgba(255,255,255,0.15); }
         .user-avatar { width: 26px; height: 26px; border-radius: 50%; object-fit: cover; }
         .user-name { font-size: 13px; color: #cbd5e1; font-weight: 500; }
+        .user-menu-wrap { position: relative; }
+        .user-menu-dropdown {
+          position: absolute; top: calc(100% + 8px); right: 0;
+          background: #1a1a1a; border: 1px solid rgba(255,255,255,0.1);
+          border-radius: 10px; padding: 6px; min-width: 140px;
+          box-shadow: 0 8px 24px rgba(0,0,0,0.4); z-index: 100;
+        }
+        .user-menu-item {
+          width: 100%; text-align: left; background: none; border: none;
+          color: #cbd5e1; font-size: 13px; font-family: inherit;
+          padding: 8px 12px; border-radius: 6px; cursor: pointer;
+          transition: background 0.15s;
+        }
+        .user-menu-item:hover { background: rgba(255,255,255,0.07); }
+        .user-menu-item.danger { color: #fca5a5; }
+        .user-menu-item.danger:hover { background: rgba(239,68,68,0.08); }
 
         .btn-signout {
           background: none; border: none; color: #475569; font-size: 12px;
@@ -634,6 +677,34 @@ export default function App() {
           display: flex; align-items: center; gap: 12px; margin-top: 20px; flex-wrap: wrap;
         }
         .enrichment-note { font-size: 12px; color: #64748b; }
+
+        /* ── Leaderboard page ───────────────────────────────────────────── */
+        .leaderboard-page { }
+        .leaderboard-row {
+          display: flex; align-items: center; gap: 16px;
+          padding: 16px 20px;
+          border-bottom: 1px solid rgba(255,255,255,0.05);
+          transition: background 0.12s;
+        }
+        .leaderboard-row:last-child { border-bottom: none; }
+        .leaderboard-row:hover { background: rgba(255,255,255,0.02); }
+        .leaderboard-rank {
+          font-size: 13px; font-weight: 700; color: #555;
+          width: 28px; flex-shrink: 0; text-align: center;
+        }
+        .leaderboard-rank.top { color: #fff; }
+        .leaderboard-name {
+          font-size: 14px; font-weight: 600; color: #e2e8f0; flex: 1;
+        }
+        .leaderboard-email { font-size: 12px; color: #475569; }
+        .leaderboard-count {
+          font-size: 13px; font-weight: 700; color: #fff;
+          background: rgba(255,255,255,0.08); border: 1px solid rgba(255,255,255,0.12);
+          border-radius: 12px; padding: 3px 12px; flex-shrink: 0;
+        }
+        .leaderboard-empty-state {
+          text-align: center; padding: 52px 0; color: #475569; font-size: 14px;
+        }
       `}</style>
 
       <div className="app-wrap">
@@ -658,13 +729,19 @@ export default function App() {
           </div>
           <div className="auth-area">
             {user ? (
-              <>
-                <div className="user-pill">
+              <div className="user-menu-wrap" ref={userMenuRef}>
+                <div className="user-pill" onClick={() => setShowUserMenu(v => !v)}>
                   {user.picture && <img src={user.picture} alt="" className="user-avatar" />}
                   <span className="user-name">{user.name || user.email}</span>
                 </div>
-                <button className="btn-signout" onClick={handleSignOut}>Sign out</button>
-              </>
+                {showUserMenu && (
+                  <div className="user-menu-dropdown">
+                    <button className="user-menu-item danger" onClick={() => { handleSignOut(); setShowUserMenu(false) }}>
+                      Sign out
+                    </button>
+                  </div>
+                )}
+              </div>
             ) : (
               GOOGLE_CLIENT_ID ? (
                 <button className="btn-google" onClick={handleSignIn}>
@@ -680,6 +757,13 @@ export default function App() {
                 <div className="no-auth-note">⚠ VITE_GOOGLE_CLIENT_ID not set</div>
               )
             )}
+            <button
+              className={showLeaderboard ? 'btn-primary' : 'btn-secondary'}
+              style={{ padding: '7px 16px', fontSize: 12 }}
+              onClick={() => setShowLeaderboard(v => !v)}
+            >
+              {showLeaderboard ? '← Source' : '🏆 Leaderboard'}
+            </button>
             <div className="status-pill"><span className="status-dot" />Live</div>
           </div>
         </div>
@@ -696,8 +780,34 @@ export default function App() {
           </div>
         )}
 
+        {/* ── Leaderboard page ── */}
+        {showLeaderboard && (
+          <div className="card leaderboard-page">
+            <div className="results-header" style={{ marginBottom: 20 }}>
+              <div className="section-label" style={{ marginBottom: 0 }}>Leaderboard</div>
+              <span className="lead-count">{leaderboard.reduce((s, e) => s + e.count, 0)} total sends</span>
+            </div>
+            {leaderboard.length === 0 ? (
+              <div className="leaderboard-empty-state">No emails sent yet — go find some leads!</div>
+            ) : (
+              leaderboard.map((entry, i) => (
+                <div key={entry.email} className="leaderboard-row">
+                  <span className={`leaderboard-rank ${i < 3 ? 'top' : ''}`}>
+                    {i === 0 ? '🥇' : i === 1 ? '🥈' : i === 2 ? '🥉' : `#${i + 1}`}
+                  </span>
+                  <div style={{ flex: 1 }}>
+                    <div className="leaderboard-name">{entry.email.split('@')[0]}</div>
+                    <div className="leaderboard-email">{entry.email}</div>
+                  </div>
+                  <span className="leaderboard-count">{entry.count} sent</span>
+                </div>
+              ))
+            )}
+          </div>
+        )}
+
         {/* ── Step: idle / searching — Search Form ── */}
-        {(step === 'idle' || step === 'searching') && !googleToken && (
+        {!showLeaderboard && (step === 'idle' || step === 'searching') && !googleToken && (
           <div className="card" style={{ textAlign: 'center', padding: '60px 32px' }}>
             <div style={{ fontSize: 32, marginBottom: 16, opacity: 0.4 }}>🔒</div>
             <p style={{ fontSize: 15, fontWeight: 600, color: '#e2e8f0', marginBottom: 8 }}>Sign in required</p>
@@ -715,7 +825,7 @@ export default function App() {
             </button>
           </div>
         )}
-        {(step === 'idle' || step === 'searching') && googleToken && (
+        {!showLeaderboard && (step === 'idle' || step === 'searching') && googleToken && (
           <div className="card">
             <div className="section-label">Search Parameters</div>
             <form onSubmit={handleSearch}>
@@ -757,7 +867,7 @@ export default function App() {
         )}
 
         {/* ── Step: reviewing / enriching — Contact Review ── */}
-        {(step === 'reviewing' || step === 'enriching' || step === 'approving') && (
+        {!showLeaderboard && (step === 'reviewing' || step === 'enriching' || step === 'approving') && (
           <div className="card">
             <div className="results-header">
               <div className="section-label" style={{ marginBottom: 0 }}>Review Contacts</div>
@@ -842,7 +952,7 @@ export default function App() {
         )}
 
         {/* ── Step: drafting — spinner while Claude works ── */}
-        {step === 'drafting' && (
+        {!showLeaderboard && step === 'drafting' && (
           <div className="card">
             <div className="section-label">Generating Draft</div>
             <div className="empty-state">
@@ -853,7 +963,7 @@ export default function App() {
         )}
 
         {/* ── Step: editing — Draft Carousel ── */}
-        {step === 'editing' && (
+        {!showLeaderboard && step === 'editing' && (
           <div className="card">
             <div className="results-header">
               <div className="section-label" style={{ marginBottom: 0 }}>Review & Edit Drafts</div>
@@ -948,7 +1058,7 @@ export default function App() {
         )}
 
         {/* ── Step: committing ── */}
-        {step === 'committing' && (
+        {!showLeaderboard && step === 'committing' && (
           <div className="card">
             <div className="section-label">Scheduling</div>
             <div className="empty-state">
@@ -959,7 +1069,7 @@ export default function App() {
         )}
 
         {/* ── Step: done ── */}
-        {step === 'done' && (
+        {!showLeaderboard && step === 'done' && (
           <div className="card">
             <div className="results-header">
               <div className="section-label" style={{ marginBottom: 0 }}>Scheduled</div>

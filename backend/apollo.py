@@ -44,44 +44,63 @@ def _person_to_contact(person: dict) -> Contact:
     )
 
 
-async def search_contacts_raw(domain: str, target_title: str, limit: int) -> List[Contact]:
+async def search_contacts_raw(
+    domain: str,
+    target_title: str,
+    limit: int,
+    contacted_ids: set[str] | None = None,
+) -> List[Contact]:
     """
     Apollo api_search — returns raw results with no enrichment.
+    Paginates until `limit` fresh (never-contacted) contacts are found.
     Tries domain first; falls back to org name (stripped TLD) if zero results.
     Contacts may have email=None; caller decides when/if to enrich.
     """
+    if contacted_ids is None:
+        contacted_ids = set()
+
     api_key = os.getenv("APOLLO_API_KEY")
     if not api_key:
         raise HTTPException(status_code=500, detail="APOLLO_API_KEY not configured")
 
     headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
-    base_payload = {"person_titles": [target_title], "page": 1, "per_page": min(limit, 100)}
+    PER_PAGE = 25
 
-    async with httpx.AsyncClient() as client:
-        # Try domain first
-        response = await client.post(
-            "https://api.apollo.io/v1/mixed_people/api_search",
-            json={**base_payload, "q_organization_domains": domain},
-            headers=headers,
-            timeout=30.0,
-        )
-        if response.status_code != 200:
-            raise HTTPException(status_code=response.status_code, detail=f"Apollo API error: {response.text}")
-
-        if not response.json().get("people"):
-            # Fallback: strip TLD and use company name (e.g. "tinder.com" → "tinder")
-            org_name = domain.split(".")[0]
-            response = await client.post(
+    async def fetch_page(page: int, search_param: dict) -> tuple[list[dict], dict]:
+        payload = {"person_titles": [target_title], "page": page, "per_page": PER_PAGE, **search_param}
+        async with httpx.AsyncClient() as client:
+            resp = await client.post(
                 "https://api.apollo.io/v1/mixed_people/api_search",
-                json={**base_payload, "q_organization_name": org_name},
-                headers=headers,
-                timeout=30.0,
+                json=payload, headers=headers, timeout=30.0,
             )
-            if response.status_code != 200:
-                raise HTTPException(status_code=response.status_code, detail=f"Apollo API error: {response.text}")
+        if resp.status_code != 200:
+            raise HTTPException(status_code=resp.status_code, detail=f"Apollo API error: {resp.text}")
+        data = resp.json()
+        return data.get("people", []), data.get("pagination", {})
 
-    people = response.json().get("people", [])
-    return [_person_to_contact(p) for p in people[:limit]]
+    # Determine search param — domain first, fallback to org name
+    search_param: dict = {"q_organization_domains": domain}
+    people, pagination = await fetch_page(1, search_param)
+    if not people:
+        org_name = domain.split(".")[0]
+        search_param = {"q_organization_name": org_name}
+        people, pagination = await fetch_page(1, search_param)
+
+    fresh: List[Contact] = [
+        _person_to_contact(p) for p in people if p.get("id") not in contacted_ids
+    ]
+
+    page = 2
+    total_pages = pagination.get("total_pages", 1)
+
+    while len(fresh) < limit and page <= total_pages:
+        people, _ = await fetch_page(page, search_param)
+        if not people:
+            break
+        fresh += [_person_to_contact(p) for p in people if p.get("id") not in contacted_ids]
+        page += 1
+
+    return fresh[:limit]
 
 
 async def enrich_contact(apollo_id: str) -> Optional[str]:
