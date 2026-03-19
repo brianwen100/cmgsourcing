@@ -31,9 +31,10 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+import re as _re
 ALLOWED_EMAILS: set[str] = {
     e.strip().lower()
-    for e in os.getenv("ALLOWED_EMAILS", "").split(",")
+    for e in _re.split(r'[,\n\r]+', os.getenv("ALLOWED_EMAILS", ""))
     if e.strip()
 }
 
