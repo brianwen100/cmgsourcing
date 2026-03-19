@@ -54,6 +54,7 @@ async def require_auth(authorization: Optional[str] = Header(None)) -> str:
     if r.status_code != 200:
         raise HTTPException(status_code=401, detail="Invalid or expired Google token.")
     email = r.json().get("email", "").lower()
+    logger.info("Token email received: '%s', in allowlist: %s", email, email in ALLOWED_EMAILS)
     if not email or email not in ALLOWED_EMAILS:
         raise HTTPException(status_code=403, detail=f"{email} is not authorised to use this tool.")
     logger.info("Authenticated request from %s", email)
