@@ -109,6 +109,34 @@ export default function App() {
   // Carousel index for draft editing
   const [currentDraftIndex, setCurrentDraftIndex] = useState(0)
 
+  // Manual contact entry
+  const [showManualForm, setShowManualForm] = useState(false)
+  const [manualForm, setManualForm] = useState({ first_name: '', last_name: '', email: '', title: '', company: '' })
+
+  function handleManualChange(e) {
+    const { name, value } = e.target
+    setManualForm(prev => ({ ...prev, [name]: value }))
+  }
+
+  function handleAddManual(e) {
+    e.preventDefault()
+    if (!manualForm.email || !manualForm.first_name) return
+    const contact = {
+      ...manualForm,
+      apollo_id: `manual-${Date.now()}`,
+      has_email: true,
+      enriched: false,
+    }
+    setRawContacts(prev => {
+      const updated = [...prev, contact]
+      setSelectedIds(sel => new Set([...sel, updated.length - 1]))
+      return updated
+    })
+    setManualForm({ first_name: '', last_name: '', email: '', title: '', company: '' })
+    setShowManualForm(false)
+    if (step === 'idle') setStep('reviewing')
+  }
+
   // Logo fallback
   const [logoError, setLogoError] = useState(false)
 
@@ -718,6 +746,16 @@ export default function App() {
         }
         .enrichment-note { font-size: 12px; color: #64748b; }
 
+        /* ── Manual entry form ──────────────────────────────────────────── */
+        .manual-form {
+          margin-top: 16px; padding: 18px 20px;
+          background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.07);
+          border-radius: 10px;
+        }
+        .manual-form-grid {
+          display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 10px 16px; margin-bottom: 14px;
+        }
+
         /* ── Week select ────────────────────────────────────────────────── */
         .week-select {
           background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.12);
@@ -925,6 +963,10 @@ export default function App() {
                   {step === 'searching' ? <span className="spinner" /> : '→'}
                   {step === 'searching' ? 'Searching…' : 'Find Leads'}
                 </button>
+                <button type="button" className="btn-ghost"
+                  onClick={() => { setStep('reviewing'); setShowManualForm(true) }}>
+                  + Add contact manually
+                </button>
               </div>
             </form>
           </div>
@@ -1009,7 +1051,45 @@ export default function App() {
                     </span>
                   )}
                   <button className="btn-ghost" onClick={handleReset}>← New search</button>
+                  <button className="btn-ghost" onClick={() => setShowManualForm(v => !v)}>
+                    {showManualForm ? '✕ Cancel' : '+ Add manually'}
+                  </button>
                 </div>
+
+                {showManualForm && (
+                  <form className="manual-form" onSubmit={handleAddManual}>
+                    <div className="manual-form-grid">
+                      <div className="form-group">
+                        <label className="form-label">First Name *</label>
+                        <input className="form-input" name="first_name" value={manualForm.first_name}
+                          onChange={handleManualChange} placeholder="Brian" required />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Last Name</label>
+                        <input className="form-input" name="last_name" value={manualForm.last_name}
+                          onChange={handleManualChange} placeholder="Wen" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Email *</label>
+                        <input className="form-input" type="email" name="email" value={manualForm.email}
+                          onChange={handleManualChange} placeholder="brian@example.com" required />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Title</label>
+                        <input className="form-input" name="title" value={manualForm.title}
+                          onChange={handleManualChange} placeholder="VP of Strategy" />
+                      </div>
+                      <div className="form-group">
+                        <label className="form-label">Company</label>
+                        <input className="form-input" name="company" value={manualForm.company}
+                          onChange={handleManualChange} placeholder="Acme Corp" />
+                      </div>
+                    </div>
+                    <button type="submit" className="btn-secondary" style={{ fontSize: 12, padding: '7px 16px' }}>
+                      + Add contact
+                    </button>
+                  </form>
+                )}
               </>
             )}
           </div>
