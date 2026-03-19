@@ -37,6 +37,7 @@ ALLOWED_EMAILS: set[str] = {
     for e in _re.split(r'[,\n\r]+', os.getenv("ALLOWED_EMAILS", ""))
     if e.strip()
 }
+logger.info("ALLOWED_EMAILS loaded: %s", ALLOWED_EMAILS)
 
 
 # ── Auth dependency ────────────────────────────────────────────────────────────
