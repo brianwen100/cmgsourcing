@@ -41,7 +41,16 @@ def mark_contacted(contacts: list[dict], sent_by: str = "") -> None:
     """Insert/upsert contacts into the contacted table after a successful send."""
     now = datetime.now(timezone.utc).isoformat()
     rows = [
-        {"apollo_id": c["apollo_id"], "sent_by": sent_by, "created_at": now}
+        {
+            "apollo_id":  c["apollo_id"],
+            "sent_by":    sent_by,
+            "created_at": now,
+            "first_name": c.get("first_name", ""),
+            "last_name":  c.get("last_name", ""),
+            "title":      c.get("title", ""),
+            "company":    c.get("company", ""),
+            "email":      c.get("email", ""),
+        }
         for c in contacts
         if c.get("apollo_id")
     ]
