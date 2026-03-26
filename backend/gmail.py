@@ -1,12 +1,12 @@
 import base64
 import os
+import re
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
 
-from google.oauth2.credentials import Credentials
-from googleapiclient.discovery import build
+import httpx
 
 _PDF_PATH = os.path.join(os.path.dirname(__file__), "[General] Spring 2026 PitchBook.pdf")
 
@@ -40,19 +40,23 @@ def schedule_send(
     delivery_time: str,          # ISO 8601 UTC, e.g. "2026-04-01T09:00:00Z"
 ) -> str:
     """
-    Schedule an email to send at delivery_time via Gmail API.
-    The email appears in the Scheduled folder — NOT in Drafts.
+    Schedule an email via a direct Gmail REST API call.
+    Using httpx instead of the Google Python client to ensure deliveryTime
+    is included in the request body without being stripped by schema validation.
     Returns the Gmail message ID.
     """
-    creds = Credentials(token=google_token)
-    service = build("gmail", "v1", credentials=creds)
+    # Strip milliseconds for clean RFC 3339 (e.g. "2026-04-01T09:00:00.000Z" → "2026-04-01T09:00:00Z")
+    delivery_time = re.sub(r'\.\d+Z$', 'Z', delivery_time)
 
-    result = service.users().messages().send(
-        userId="me",
-        body={
-            "raw": _build_raw(to_email, subject, body),
-            "deliveryTime": delivery_time,
-        },
-    ).execute()
+    with httpx.Client(timeout=30.0) as client:
+        r = client.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            headers={"Authorization": f"Bearer {google_token}"},
+            json={
+                "raw": _build_raw(to_email, subject, body),
+                "deliveryTime": delivery_time,
+            },
+        )
 
-    return result.get("id", "")
+    r.raise_for_status()
+    return r.json().get("id", "")

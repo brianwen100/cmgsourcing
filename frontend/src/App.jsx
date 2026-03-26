@@ -109,6 +109,10 @@ export default function App() {
   // Carousel index for draft editing
   const [currentDraftIndex, setCurrentDraftIndex] = useState(0)
 
+  // Manual contact entry
+  const [showAddContact, setShowAddContact] = useState(false)
+  const [addContactForm, setAddContactForm] = useState({ first_name: '', last_name: '', email: '', title: '', company: '' })
+
   // Logo fallback
   const [logoError, setLogoError] = useState(false)
 
@@ -160,6 +164,23 @@ export default function App() {
     return () => document.removeEventListener('mousedown', handleClickOutside)
   }, [])
 
+  // Restore session from localStorage on mount
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem('cmg_session')
+      if (!saved) return
+      const { token, user: savedUser, expiresAt } = JSON.parse(saved)
+      if (Date.now() < expiresAt) {
+        setGoogleToken(token)
+        setUser(savedUser)
+      } else {
+        localStorage.removeItem('cmg_session')
+      }
+    } catch {
+      localStorage.removeItem('cmg_session')
+    }
+  }, [])
+
   // Load GIS
   useEffect(() => {
     if (!GOOGLE_CLIENT_ID) return
@@ -174,11 +195,16 @@ export default function App() {
         callback: async (response) => {
           if (response.error) { setError(`Google sign-in failed: ${response.error}`); return }
           const token = response.access_token
+          const expiresAt = Date.now() + (response.expires_in || 3600) * 1000
           setGoogleToken(token)
           const res = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
             headers: { Authorization: `Bearer ${token}` },
           })
-          if (res.ok) setUser(await res.json())
+          if (res.ok) {
+            const userInfo = await res.json()
+            setUser(userInfo)
+            localStorage.setItem('cmg_session', JSON.stringify({ token, user: userInfo, expiresAt }))
+          }
         },
       })
     }
@@ -189,7 +215,9 @@ export default function App() {
   function handleSignIn()  { tokenClientRef.current?.requestAccessToken() }
   function handleSignOut() {
     if (googleToken) window.google?.accounts.oauth2.revoke(googleToken)
-    setGoogleToken(null); setUser(null)
+    setGoogleToken(null)
+    setUser(null)
+    localStorage.removeItem('cmg_session')
   }
 
   function handleChange(e) {
@@ -295,6 +323,7 @@ export default function App() {
       const results = await res.json()
       setDrafts(results.map(d => ({ ...d, approved: false })))
       setCurrentDraftIndex(0)
+      setShowAddContact(false)
       setStep('editing')
     } catch (err) {
       setError(err.message)
@@ -362,6 +391,19 @@ export default function App() {
     if (!wasApproved && i < drafts.length - 1) {
       setCurrentDraftIndex(i + 1)
     }
+  }
+
+  function addManualContact() {
+    const { first_name, last_name, email, title, company } = addContactForm
+    if (!email) { setError('Email is required.'); return }
+    const newDraft = { apollo_id: '', first_name, last_name, email, title, company, subject: '', body: '', approved: false }
+    setDrafts(prev => {
+      const next = [...prev, newDraft]
+      setCurrentDraftIndex(next.length - 1)
+      return next
+    })
+    setAddContactForm({ first_name: '', last_name: '', email: '', title: '', company: '' })
+    setShowAddContact(false)
   }
 
   const isWorking = ['searching', 'enriching', 'drafting', 'committing'].includes(step)
@@ -925,6 +967,14 @@ export default function App() {
                   {step === 'searching' ? <span className="spinner" /> : '→'}
                   {step === 'searching' ? 'Searching…' : 'Find Leads'}
                 </button>
+                <button
+                  type="button"
+                  className="btn-ghost"
+                  style={{ fontSize: 12 }}
+                  onClick={() => { setDrafts([]); setShowAddContact(true); setStep('editing') }}
+                >
+                  + Manual send
+                </button>
               </div>
             </form>
           </div>
@@ -1031,9 +1081,20 @@ export default function App() {
           <div className="card">
             <div className="results-header">
               <div className="section-label" style={{ marginBottom: 0 }}>Review & Edit Drafts</div>
-              <span className="lead-count">
-                {drafts.filter(d => d.approved).length} / {drafts.length} approved
-              </span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                {drafts.length > 0 && (
+                  <span className="lead-count">
+                    {drafts.filter(d => d.approved).length} / {drafts.length} approved
+                  </span>
+                )}
+                <button
+                  className="btn-secondary"
+                  style={{ padding: '5px 12px', fontSize: 12 }}
+                  onClick={() => setShowAddContact(s => !s)}
+                >
+                  + Add contact
+                </button>
+              </div>
             </div>
 
             {drafts.length > 0 && (() => {
@@ -1055,6 +1116,13 @@ export default function App() {
                       disabled={currentDraftIndex === drafts.length - 1}
                     >→</button>
                     <div style={{ marginLeft: 'auto', display: 'flex', gap: 8 }}>
+                      <button
+                        className="btn-secondary"
+                        style={{ padding: '7px 14px', fontSize: 12 }}
+                        onClick={() => setShowAddContact(s => !s)}
+                      >
+                        + Add contact
+                      </button>
                       <button
                         className="btn-secondary"
                         style={{ padding: '7px 18px', fontSize: 12 }}
@@ -1096,6 +1164,28 @@ export default function App() {
               )
             })()}
 
+            {showAddContact && (
+              <div style={{ marginTop: 16, padding: 16, border: '1px solid rgba(255,255,255,0.1)', borderRadius: 8, background: 'rgba(255,255,255,0.02)' }}>
+                <div style={{ fontSize: 12, color: '#888', marginBottom: 12 }}>Add contact manually</div>
+                <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, marginBottom: 10 }}>
+                  <input className="form-input" placeholder="First name" value={addContactForm.first_name}
+                    onChange={e => setAddContactForm(p => ({ ...p, first_name: e.target.value }))} />
+                  <input className="form-input" placeholder="Last name" value={addContactForm.last_name}
+                    onChange={e => setAddContactForm(p => ({ ...p, last_name: e.target.value }))} />
+                  <input className="form-input" placeholder="Email *" value={addContactForm.email}
+                    onChange={e => setAddContactForm(p => ({ ...p, email: e.target.value }))} />
+                  <input className="form-input" placeholder="Title" value={addContactForm.title}
+                    onChange={e => setAddContactForm(p => ({ ...p, title: e.target.value }))} />
+                  <input className="form-input" style={{ gridColumn: 'span 2' }} placeholder="Company" value={addContactForm.company}
+                    onChange={e => setAddContactForm(p => ({ ...p, company: e.target.value }))} />
+                </div>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <button className="btn-primary" style={{ fontSize: 12, padding: '6px 16px' }} onClick={addManualContact}>Add</button>
+                  <button className="btn-ghost" style={{ fontSize: 12 }} onClick={() => setShowAddContact(false)}>Cancel</button>
+                </div>
+              </div>
+            )}
+
             <div className="action-row">
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Schedule Send</label>
@@ -1105,7 +1195,7 @@ export default function App() {
                   style={{ width: 'auto' }}
                   value={scheduledTime}
                   onChange={e => setScheduledTime(e.target.value)}
-                  min={new Date(Date.now() + 5 * 60 * 1000).toISOString().slice(0, 16)}
+                  min={new Date(Date.now() + 15 * 60 * 1000).toISOString().slice(0, 16)}
                 />
               </div>
               <button
