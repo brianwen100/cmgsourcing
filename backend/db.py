@@ -1,7 +1,10 @@
 import os
 from datetime import datetime, timedelta, timezone
+from zoneinfo import ZoneInfo
 
 from supabase import create_client, Client
+
+PT = ZoneInfo("America/Los_Angeles")
 
 _client: Client | None = None
 
@@ -59,15 +62,18 @@ def mark_contacted(contacts: list[dict], sent_by: str = "") -> None:
 
 
 def _week_start(dt: datetime) -> datetime:
-    """Return the Sunday 00:00:00 UTC of the week containing dt."""
-    days_since_sunday = dt.isoweekday() % 7   # Sun=0, Mon=1 … Sat=6
-    return (dt - timedelta(days=days_since_sunday)).replace(
+    """Return Monday 00:00:00 UTC of the week containing dt, using Pacific Time boundaries."""
+    dt_pt = dt.astimezone(PT)
+    # isoweekday: Mon=1 … Sun=7
+    days_since_monday = dt_pt.isoweekday() - 1
+    monday_pt = (dt_pt - timedelta(days=days_since_monday)).replace(
         hour=0, minute=0, second=0, microsecond=0
     )
+    return monday_pt.astimezone(timezone.utc)
 
 
 def get_available_weeks() -> list[str]:
-    """Return ISO date strings (YYYY-MM-DD) for every Sunday that has data, newest first."""
+    """Return ISO date strings (YYYY-MM-DD, Monday in PT) for every week that has data, newest first."""
     res = (
         get_db()
         .table("contacted")
@@ -78,7 +84,9 @@ def get_available_weeks() -> list[str]:
     weeks: set[str] = set()
     for row in res.data:
         dt = datetime.fromisoformat(row["created_at"].replace("Z", "+00:00"))
-        weeks.add(_week_start(dt).date().isoformat())
+        monday_utc = _week_start(dt)
+        # Store the date as it appears in PT so the label reads naturally
+        weeks.add(monday_utc.astimezone(PT).date().isoformat())
     return sorted(weeks, reverse=True)
 
 
@@ -86,9 +94,12 @@ def get_leaderboard(week_start: str | None = None) -> list[dict]:
     """Return send counts grouped by sender for the given week (or all time)."""
     query = get_db().table("contacted").select("sent_by").not_.is_("sent_by", "null")
     if week_start:
-        start_dt = datetime.fromisoformat(week_start).replace(tzinfo=timezone.utc)
-        end_dt = start_dt + timedelta(days=7)
-        query = query.gte("created_at", start_dt.isoformat()).lt("created_at", end_dt.isoformat())
+        # week_start is a PT date string (YYYY-MM-DD); convert Monday 00:00 PT → UTC
+        naive = datetime.fromisoformat(week_start)
+        start_pt = naive.replace(hour=0, minute=0, second=0, microsecond=0, tzinfo=PT)
+        start_utc = start_pt.astimezone(timezone.utc)
+        end_utc = start_utc + timedelta(days=7)
+        query = query.gte("created_at", start_utc.isoformat()).lt("created_at", end_utc.isoformat())
     res = query.execute()
     counts: dict[str, int] = {}
     for row in res.data:
