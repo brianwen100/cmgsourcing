@@ -7,7 +7,7 @@ import anthropic
 
 from apollo import Contact
 
-TEMPLATE_PATH = Path(__file__).parent.parent / "templates" / "outreach_template.txt"
+TEMPLATE_PATH = Path(__file__).parent / "templates" / "outreach_template.txt"
 
 SYSTEM_PROMPT = (
     "You are a business development representative for CMG Strategy Consulting, "
