@@ -161,6 +161,7 @@ async def auth_google(request: Request):
     """Redirect the browser to Google's OAuth consent screen."""
     import urllib.parse
     redirect_uri = _redirect_uri(request)
+    logger.info("auth/google redirect_uri=%s headers=%s", redirect_uri, dict(request.headers))
     params = urllib.parse.urlencode({
         "client_id": GOOGLE_CLIENT_ID,
         "redirect_uri": redirect_uri,
