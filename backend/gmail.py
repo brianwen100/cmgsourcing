@@ -5,6 +5,7 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from email.mime.base import MIMEBase
 from email import encoders
+from typing import Tuple
 
 import httpx
 
@@ -58,5 +59,44 @@ def schedule_send(
             },
         )
 
+    r.raise_for_status()
+    return r.json().get("id", "")
+
+
+async def refresh_access_token(
+    refresh_token: str,
+    client_id: str,
+    client_secret: str,
+) -> Tuple[str, int]:
+    """Exchange a refresh token for a new access token.
+    Returns (access_token, expires_in)."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.post(
+            "https://oauth2.googleapis.com/token",
+            data={
+                "grant_type": "refresh_token",
+                "refresh_token": refresh_token,
+                "client_id": client_id,
+                "client_secret": client_secret,
+            },
+        )
+    r.raise_for_status()
+    data = r.json()
+    return data["access_token"], int(data.get("expires_in", 3600))
+
+
+async def send_email(
+    to_email: str,
+    subject: str,
+    body: str,
+    access_token: str,
+) -> str:
+    """Send an email immediately via Gmail REST API. Returns the Gmail message ID."""
+    async with httpx.AsyncClient(timeout=30.0) as client:
+        r = await client.post(
+            "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
+            headers={"Authorization": f"Bearer {access_token}"},
+            json={"raw": _build_raw(to_email, subject, body)},
+        )
     r.raise_for_status()
     return r.json().get("id", "")

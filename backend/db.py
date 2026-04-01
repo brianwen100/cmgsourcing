@@ -109,3 +109,87 @@ def get_leaderboard(week_start: str | None = None) -> list[dict]:
         {"email": email, "count": count}
         for email, count in sorted(counts.items(), key=lambda x: x[1], reverse=True)
     ]
+
+
+# ── OAuth token storage ────────────────────────────────────────────────────────
+
+def store_user_token(
+    email: str,
+    refresh_token: str,
+    access_token: str | None = None,
+    expires_in: int | None = None,
+) -> None:
+    """Upsert OAuth tokens for a user."""
+    now = datetime.now(timezone.utc)
+    row: dict = {
+        "email": email,
+        "refresh_token": refresh_token,
+        "updated_at": now.isoformat(),
+    }
+    if access_token:
+        row["access_token"] = access_token
+    if expires_in is not None:
+        row["token_expiry"] = (now + timedelta(seconds=expires_in)).isoformat()
+    get_db().table("user_tokens").upsert(row, on_conflict="email").execute()
+
+
+def get_user_token(email: str) -> dict | None:
+    """Return the stored token row for a user, or None if not found."""
+    res = (
+        get_db()
+        .table("user_tokens")
+        .select("*")
+        .eq("email", email)
+        .limit(1)
+        .execute()
+    )
+    return res.data[0] if res.data else None
+
+
+def update_cached_access_token(email: str, access_token: str, expires_in: int) -> None:
+    """Update the cached access token after a refresh."""
+    now = datetime.now(timezone.utc)
+    get_db().table("user_tokens").update({
+        "access_token": access_token,
+        "token_expiry": (now + timedelta(seconds=expires_in)).isoformat(),
+        "updated_at": now.isoformat(),
+    }).eq("email", email).execute()
+
+
+# ── Scheduled emails ───────────────────────────────────────────────────────────
+
+def schedule_emails(rows: list[dict]) -> None:
+    """Insert rows into the scheduled_emails table."""
+    if not rows:
+        return
+    get_db().table("scheduled_emails").insert(rows).execute()
+
+
+def get_due_emails() -> list[dict]:
+    """Return pending emails whose send_at is now or in the past."""
+    now = datetime.now(timezone.utc).isoformat()
+    res = (
+        get_db()
+        .table("scheduled_emails")
+        .select("*")
+        .eq("status", "pending")
+        .lte("send_at", now)
+        .execute()
+    )
+    return res.data or []
+
+
+def mark_email_sent(id: str, gmail_message_id: str) -> None:
+    """Mark a scheduled email as sent."""
+    get_db().table("scheduled_emails").update({
+        "status": "sent",
+        "gmail_message_id": gmail_message_id,
+    }).eq("id", id).execute()
+
+
+def mark_email_failed(id: str, error_message: str) -> None:
+    """Mark a scheduled email as failed."""
+    get_db().table("scheduled_emails").update({
+        "status": "failed",
+        "error_message": error_message,
+    }).eq("id", id).execute()
