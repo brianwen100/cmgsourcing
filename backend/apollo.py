@@ -64,7 +64,7 @@ async def search_contacts_raw(
         raise HTTPException(status_code=500, detail="APOLLO_API_KEY not configured")
 
     headers = {"X-Api-Key": api_key, "Content-Type": "application/json"}
-    PER_PAGE = 25
+    PER_PAGE = 50
 
     async def fetch_page(page: int, search_param: dict) -> tuple[list[dict], dict]:
         payload = {"person_titles": [target_title], "page": page, "per_page": PER_PAGE, **search_param}

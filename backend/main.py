@@ -52,7 +52,7 @@ CRON_SECRET          = os.getenv("CRON_SECRET", "")
 
 
 def _redirect_uri(request: Request) -> str:
-    host = request.headers.get("x-forwarded-host") or request.url.hostname
+    host = request.headers.get("x-forwarded-host") or request.url.netloc
     scheme = request.headers.get("x-forwarded-proto") or request.url.scheme
     return f"{scheme}://{host}/auth/callback"
 
