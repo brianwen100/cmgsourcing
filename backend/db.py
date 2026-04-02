@@ -180,11 +180,8 @@ def get_due_emails() -> list[dict]:
 
 
 def mark_email_sent(id: str, gmail_message_id: str) -> None:
-    """Mark a scheduled email as sent."""
-    get_db().table("scheduled_emails").update({
-        "status": "sent",
-        "gmail_message_id": gmail_message_id,
-    }).eq("id", id).execute()
+    """Delete a scheduled email after successful send (contacted table has the permanent record)."""
+    get_db().table("scheduled_emails").delete().eq("id", id).execute()
 
 
 def mark_email_failed(id: str, error_message: str) -> None:

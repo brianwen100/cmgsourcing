@@ -1170,14 +1170,29 @@ export default function App() {
             <div className="action-row">
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Schedule Send</label>
-                <input
-                  type="datetime-local"
+                <select
                   className="form-input"
                   style={{ width: 'auto' }}
                   value={scheduledTime}
                   onChange={e => setScheduledTime(e.target.value)}
-                  min={new Date(Date.now() + 15 * 60 * 1000).toISOString().slice(0, 16)}
-                />
+                >
+                  <option value="">Pick a time…</option>
+                  {(() => {
+                    const slots = []
+                    const now = new Date()
+                    // Round up to next 15-min boundary, minimum 15 mins from now
+                    const start = new Date(now.getTime() + 15 * 60 * 1000)
+                    start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0)
+                    // Generate 48 slots (12 hours)
+                    for (let i = 0; i < 48; i++) {
+                      const t = new Date(start.getTime() + i * 15 * 60 * 1000)
+                      const value = t.toISOString().slice(0, 16)
+                      const label = t.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
+                      slots.push(<option key={value} value={value}>{label}</option>)
+                    }
+                    return slots
+                  })()}
+                </select>
               </div>
               <button
                 className="btn-primary"
@@ -1211,7 +1226,7 @@ export default function App() {
               <span className="lead-count badge-success">{commitResults.length} scheduled</span>
             </div>
             <p style={{ fontSize: 12, color: '#475569', margin: '8px 0 16px' }}>
-              Emails will send at {scheduledTime ? new Date(scheduledTime).toLocaleString() : '—'}. Check the <strong>Scheduled</strong> folder in Gmail to confirm.
+              Emails will send at {scheduledTime ? new Date(scheduledTime).toLocaleString() : '—'}. Check your <strong>Sent</strong> folder in Gmail to confirm.
             </p>
             <div className="done-list">
               {commitResults.map((r, i) => (

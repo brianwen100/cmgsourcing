@@ -460,9 +460,9 @@ async def cron_send_due(x_cron_secret: Optional[str] = Header(None)):
 
         try:
             access_token = await get_fresh_access_token(sender_email)
-            msg_id = await send_email(to_email, subject, body, access_token)
-            mark_email_sent(email_id, msg_id)
-            logger.info("Cron sent email id=%s to %s (gmail_id=%s)", email_id, to_email, msg_id)
+            await send_email(to_email, subject, body, access_token)
+            mark_email_sent(email_id, "")
+            logger.info("Cron sent email id=%s to %s", email_id, to_email)
             sent_count += 1
         except Exception as exc:
             mark_email_failed(email_id, str(exc))
