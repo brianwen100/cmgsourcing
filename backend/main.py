@@ -207,7 +207,7 @@ async def auth_callback(request: Request, code: Optional[str] = None, error: Opt
             "https://www.googleapis.com/oauth2/v3/userinfo",
             headers={"Authorization": f"Bearer {access_token}"},
         )
-    if not ui.ok:
+    if not ui.is_success:
         return RedirectResponse(f"{frontend}?auth_error=userinfo_failed")
     user_info = ui.json()
     email = user_info.get("email", "").lower()
