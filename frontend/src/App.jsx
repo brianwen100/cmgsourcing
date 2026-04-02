@@ -97,7 +97,9 @@ export default function App() {
   const [selectedIds, setSelectedIds] = useState(new Set())
   const [drafts, setDrafts] = useState([])             // per-contact drafts from /api/draft
   const [commitResults, setCommitResults] = useState([])
-  const [scheduledTime, setScheduledTime] = useState('')  // ISO datetime-local value
+  const [scheduledDate, setScheduledDate] = useState('')  // YYYY-MM-DD
+  const [scheduledSlot, setScheduledSlot] = useState('')  // HH:MM local
+  const scheduledTime = scheduledDate && scheduledSlot ? `${scheduledDate}T${scheduledSlot}` : ''
 
   // Carousel index for draft editing
   const [currentDraftIndex, setCurrentDraftIndex] = useState(0)
@@ -1170,29 +1172,46 @@ export default function App() {
             <div className="action-row">
               <div className="form-group" style={{ marginBottom: 0 }}>
                 <label className="form-label">Schedule Send</label>
-                <select
-                  className="form-input"
-                  style={{ width: 'auto' }}
-                  value={scheduledTime}
-                  onChange={e => setScheduledTime(e.target.value)}
-                >
-                  <option value="">Pick a time…</option>
-                  {(() => {
-                    const slots = []
-                    const now = new Date()
-                    // Round up to next 15-min boundary, minimum 15 mins from now
-                    const start = new Date(now.getTime() + 15 * 60 * 1000)
-                    start.setMinutes(Math.ceil(start.getMinutes() / 15) * 15, 0, 0)
-                    // Generate 48 slots (12 hours)
-                    for (let i = 0; i < 48; i++) {
-                      const t = new Date(start.getTime() + i * 15 * 60 * 1000)
-                      const value = t.toISOString().slice(0, 16)
-                      const label = t.toLocaleString([], { weekday: 'short', month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' })
-                      slots.push(<option key={value} value={value}>{label}</option>)
-                    }
-                    return slots
-                  })()}
-                </select>
+                <div style={{ display: 'flex', gap: 8 }}>
+                  <input
+                    type="date"
+                    className="form-input"
+                    style={{ width: 'auto' }}
+                    value={scheduledDate}
+                    min={new Date().toISOString().slice(0, 10)}
+                    max={new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10)}
+                    onChange={e => { setScheduledDate(e.target.value); setScheduledSlot('') }}
+                  />
+                  <select
+                    className="form-input"
+                    style={{ width: 'auto' }}
+                    value={scheduledSlot}
+                    onChange={e => setScheduledSlot(e.target.value)}
+                    disabled={!scheduledDate}
+                  >
+                    <option value="">Pick a time…</option>
+                    {(() => {
+                      const slots = []
+                      const now = new Date()
+                      const isToday = scheduledDate === now.toISOString().slice(0, 10)
+                      for (let h = 6; h < 17; h++) {
+                        for (let m = 0; m < 60; m += 15) {
+                          // If today, skip slots in the past or within 15 mins
+                          if (isToday) {
+                            const slotDate = new Date(`${scheduledDate}T${String(h).padStart(2,'0')}:${String(m).padStart(2,'0')}`)
+                            if (slotDate.getTime() < now.getTime() + 15 * 60 * 1000) continue
+                          }
+                          const hh = String(h).padStart(2, '0')
+                          const mm = String(m).padStart(2, '0')
+                          const value = `${hh}:${mm}`
+                          const label = new Date(`${scheduledDate || '2000-01-01'}T${hh}:${mm}`).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' })
+                          slots.push(<option key={value} value={value}>{label}</option>)
+                        }
+                      }
+                      return slots
+                    })()}
+                  </select>
+                </div>
               </div>
               <button
                 className="btn-primary"
