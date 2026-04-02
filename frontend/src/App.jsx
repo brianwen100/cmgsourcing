@@ -1226,7 +1226,7 @@ export default function App() {
               <span className="lead-count badge-success">{commitResults.length} scheduled</span>
             </div>
             <p style={{ fontSize: 12, color: '#475569', margin: '8px 0 16px' }}>
-              Emails will send at {scheduledTime ? new Date(scheduledTime).toLocaleString() : '—'}. Check your <strong>Sent</strong> folder in Gmail to confirm.
+              Emails will send at {scheduledTime ? new Date(scheduledTime).toLocaleString('en-US', { timeZone: 'America/Los_Angeles', dateStyle: 'medium', timeStyle: 'short' }) + ' PT' : '—'}. Check your <strong>Sent</strong> folder in Gmail to confirm.
             </p>
             <div className="done-list">
               {commitResults.map((r, i) => (
