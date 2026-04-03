@@ -92,7 +92,7 @@ def get_available_weeks() -> list[str]:
 
 def get_leaderboard(week_start: str | None = None) -> list[dict]:
     """Return send counts grouped by sender for the given week (or all time)."""
-    query = get_db().table("contacted").select("sent_by").not_.is_("sent_by", "null")
+    query = get_db().table("contacted").select("sent_by", count="exact").not_.is_("sent_by", "null")
     if week_start:
         # week_start is a PT date string (YYYY-MM-DD); convert Monday 00:00 PT → UTC
         naive = datetime.fromisoformat(week_start)
@@ -100,11 +100,18 @@ def get_leaderboard(week_start: str | None = None) -> list[dict]:
         start_utc = start_pt.astimezone(timezone.utc)
         end_utc = start_utc + timedelta(days=7)
         query = query.gte("created_at", start_utc.isoformat()).lt("created_at", end_utc.isoformat())
-    res = query.execute()
+
     counts: dict[str, int] = {}
-    for row in res.data:
-        sender = row["sent_by"]
-        counts[sender] = counts.get(sender, 0) + 1
+    page = 0
+    while True:
+        res = query.range(page * 1000, (page + 1) * 1000 - 1).execute()
+        for row in res.data:
+            sender = row["sent_by"]
+            counts[sender] = counts.get(sender, 0) + 1
+        if len(res.data) < 1000:
+            break
+        page += 1
+
     return [
         {"email": email, "count": count}
         for email, count in sorted(counts.items(), key=lambda x: x[1], reverse=True)
